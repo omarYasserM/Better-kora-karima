@@ -5,6 +5,7 @@ import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { Upload } from "lucide-react"
+import Image from "next/image"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,7 +20,17 @@ const formSchema = z.object({
     .regex(/^[\u0600-\u06FF\s]+$/, "يجب إدخال الاسم باللغة العربية فقط"),
   nationalId: z.string().length(14, "الرقم القومي يجب أن يكون 14 رقم").regex(/^\d+$/, "يجب إدخال أرقام فقط"),
   gender: z.string().min(1, "هذا الحقل مطلوب"),
-  idCardImage: z.any().refine((files) => files?.length > 0, "يجب رفع صورة البطاقة الشخصية"),
+  idCardImage: z
+    .any()
+    .optional()
+    .refine(
+      (files) => !files || files instanceof FileList,
+      "Invalid file input"
+    )
+    .refine(
+      (files) => !files || files.length === 0 || files[0] instanceof File,
+      "Please upload a valid image file"
+    ),
   phone1: z
     .string()
     .min(1, "هذا الحقل مطلوب")
@@ -42,6 +53,8 @@ type FormData = z.infer<typeof formSchema>
 export default function BeneficiaryForm() {
   const router = useRouter()
   const [selectedFile, setSelectedFile] = useState<string>("")
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const {
     register,
@@ -54,15 +67,22 @@ export default function BeneficiaryForm() {
   })
 
   const onSubmit = (data: FormData) => {
-    console.log(data)
+    setIsSubmitting(true)
     // Navigate to the family data page with the family size
     router.push(`/family-data?familySize=${data.familySize}`)
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0].name)
+      const file = e.target.files[0]
+      setSelectedFile(file.name)
       setValue("idCardImage", e.target.files)
+      
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
     }
   }
 
@@ -109,26 +129,39 @@ export default function BeneficiaryForm() {
 
           <div className="space-y-2">
             <Label htmlFor="idCardImage">رفع صورة البطاقة الشخصية</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="idCardImage"
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleFileChange}
-                {...register("idCardImage")}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => document.getElementById("idCardImage")?.click()}
-              >
-                <Upload className="ml-2 h-4 w-4" />
-                {selectedFile || "اختر ملف"}
-              </Button>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Input
+                  id="idCardImage"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  {...register("idCardImage")}
+                  onChange={handleFileChange}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => document.getElementById("idCardImage")?.click()}
+                >
+                  <Upload className="ml-2 h-4 w-4" />
+                  {selectedFile || "اختر ملف"}
+                </Button>
+              </div>
+              {imagePreview && (
+                <div className="mt-2 rounded-lg border p-2">
+                  <Image 
+                    src={imagePreview}
+                    alt="Preview"
+                    width={200}
+                    height={150}
+                    className="max-h-40 rounded object-contain"
+                  />
+                </div>
+              )}
             </div>
-            {errors.idCardImage && <p className="text-sm text-red-500">{errors.idCardImage.message}</p>}
+            {errors.idCardImage && <p className="text-sm text-red-500">{errors.idCardImage.message?.toString()}</p>}
           </div>
 
           <div className="space-y-2">
@@ -155,7 +188,7 @@ export default function BeneficiaryForm() {
             {errors.whatsapp && <p className="text-sm text-red-500">{errors.whatsapp.message}</p>}
           </div>
 
-          <Button type="submit" className="w-full">
+          <Button type="submit" className="w-full" disabled={isSubmitting}>
             الانتقال إلى صفحة بيانات الأسرة المعيشية
           </Button>
         </form>

@@ -13,6 +13,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import Image from "next/image"
+import { FamilyMember } from "@/types"
 
 const ageGroups = [
   { value: "under8", label: "أقل من 8" },
@@ -66,30 +68,28 @@ const formSchema = z
       .string()
       .min(1, "هذا الحقل مطلوب")
       .regex(/^[\u0600-\u06FF\s]+$/, "يجب إدخال الاسم باللغة العربية فقط"),
-    kinshipRelation: z.string().optional(),
-    gender: z.string().optional(),
-    ageGroup: z.string().optional(),
-    maritalStatus: z.string().optional(),
-    hasNationalId: z.string().optional(),
+    kinshipRelation: z.string().min(1, "هذا الحقل مطلوب"),
+    gender: z.string().min(1, "هذا الحقل مطلوب"),
+    ageGroup: z.string().min(1, "هذا الحقل مطلوب"),
+    maritalStatus: z.string().min(1, "هذا الحقل مطلوب"),
+    hasNationalId: z.string().min(1, "هذا الحقل مطلوب"),
     nationalId: z.string().optional(),
-    nationalIdImage: z.any().optional(),
 
     // Educational Status
-    hasAttendedSchool: z.string().optional(),
-    notAttendingReason: z.string().optional(),
-    isLiterate: z.string().optional(),
-    educationLevel: z.string().optional(),
-    currentlyEnrolled: z.string().optional(),
-    notEnrolledReason: z.string().optional(),
-    canReadAndWrite: z.string().optional(),
+    hasAttendedSchool: z.string().min(1, "هذا الحقل مطلوب"),
+    reasonForNotAttending: z.string().optional(),
+    lastEducationalStage: z.string().optional(),
+    isCurrentlyEnrolled: z.string().optional(),
+    reasonForNotEnrolled: z.string().optional(),
     hasLiteracyCertificate: z.string().optional(),
+    canReadAndWrite: z.string().min(1, "هذا الحقل مطلوب"),
 
     // Employment Status
-    isEmployed: z.string().optional(),
+    isWorking: z.string().min(1, "هذا الحقل مطلوب"),
     jobType: z.string().optional(),
     sector: z.string().optional(),
     workNature: z.string().optional(),
-    unemploymentReason: z.string().optional(),
+    notWorkingReason: z.string().optional(),
     hasPrivateBusiness: z.string().optional(),
     businessType: z.string().optional(),
     otherBusinessType: z.string().optional(),
@@ -100,39 +100,43 @@ const formSchema = z
 
     // Health Status
     hasHealthIssue: z.string().optional(),
-    healthIssueType: z.string().optional(),
+    healthIssueType: z.array(z.string()).optional(),
     chronicDiseases: z.array(z.string()).optional(),
-    otherHealthIssue: z.string().optional(),
+    disabilityType: z.string().optional(),
+    disabilityCause: z.string().optional(),
     treatmentLocation: z.string().optional(),
-    treatmentCostCoverage: z.string().optional(),
-    requiredAssistance: z.string().optional(),
+    otherTreatmentLocation: z.string().optional(),
+    medicalExpensesCoverage: z.string().optional(),
+    otherMedicalExpensesCoverage: z.string().optional(),
+    requiredMedicalAssistance: z.string().optional(),
+
+    // New fields
+    hasMarriedDaughterUnder18: z.string().optional(),
+    hasFGM: z.string().optional(),
+    whereFGM: z.string().optional(),
+    otherWhereFGM: z.string().optional(),
   })
-  .refine(
-    (data) => {
-      if (data.hasHealthIssue === "yes" && data.healthIssueType === "chronic") {
-        return data.chronicDiseases && data.chronicDiseases.length > 0
-      }
-      return true
-    },
-    {
-      message: "يرجى اختيار مرض مزمن واحد على الأقل",
-      path: ["chronicDiseases"],
-    },
-  )
+  .transform((data): FamilyMember => ({
+    ...data,
+    wentToSchool: data.hasAttendedSchool,
+    hasHealthIssue: data.hasHealthIssue || "no",
+    healthIssueType: data.healthIssueType || [],
+    chronicDiseases: data.chronicDiseases || [],
+  }))
 
 type FormData = z.infer<typeof formSchema>
 
 interface HouseholdFormProps {
   memberIndex: number
-  onSubmit: (data: FormData) => void
+  onSubmit: (data: FamilyMember) => void
   isSubmitted?: boolean
 }
 
 const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, isSubmitted = false }) => {
   const [selectedFile, setSelectedFile] = useState<string>("")
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
   const { toast } = useToast()
   const [isSaving, setIsSaving] = useState(false)
-  const [otherHealthIssueSelected, setOtherHealthIssueSelected] = useState(false)
 
   const {
     register,
@@ -140,17 +144,15 @@ const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, is
     handleSubmit,
     watch,
     formState: { errors },
-    setValue,
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       hasHealthIssue: "",
-      healthIssueType: "",
+      healthIssueType: [],
       chronicDiseases: [],
-      otherHealthIssue: "",
       treatmentLocation: "",
-      treatmentCostCoverage: "",
-      requiredAssistance: "",
+      medicalExpensesCoverage: "",
+      requiredMedicalAssistance: "",
     },
   })
 
@@ -158,18 +160,29 @@ const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, is
   const watchMaritalStatus = watch("maritalStatus")
   const watchHasNationalId = watch("hasNationalId")
   const watchHasAttendedSchool = watch("hasAttendedSchool")
-  const watchIsEmployed = watch("isEmployed")
+  const watchIsEmployed = watch("isWorking")
   const watchHasHealthIssue = watch("hasHealthIssue")
   const watchCanReadAndWrite = watch("canReadAndWrite")
   const watchHasPrivateBusiness = watch("hasPrivateBusiness")
   const watchHasUnusedSkill = watch("hasUnusedSkill")
   const watchWantsTraining = watch("wantsTraining")
   const watchHealthIssueType = watch("healthIssueType")
+  const watchHasFGM = watch("hasFGM")
+  const watchWhereFGM = watch("whereFGM")
+
+  // Update the ID to be unique per form
+  const nationalIdImageId = `nationalIdImage-${memberIndex}`
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0].name)
-      setValue("nationalIdImage", e.target.files)
+      const file = e.target.files[0]
+      setSelectedFile(file.name)
+      
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
     }
   }
 
@@ -179,20 +192,20 @@ const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, is
       const formData = {
         ...data,
         hasHealthIssue: data.hasHealthIssue || "no",
-        healthIssueType: data.healthIssueType || undefined,
+        healthIssueType: data.healthIssueType || [],
         chronicDiseases: data.chronicDiseases || [],
-        otherHealthIssue: data.otherHealthIssue || undefined,
         treatmentLocation: data.treatmentLocation || undefined,
-        treatmentCostCoverage: data.treatmentCostCoverage || undefined,
-        requiredAssistance: data.requiredAssistance || undefined,
+        medicalExpensesCoverage: data.medicalExpensesCoverage || undefined,
+        requiredMedicalAssistance: data.requiredMedicalAssistance || ""
       }
 
       onSubmit(formData)
       toast({
         title: "تم الحفظ",
-        description: `تم حفظ بيانات الفرد ${memberIndex + 1} بنجاح`,
+        description: "تم حفظ بيانات الأسرة بنجاح",
       })
     } catch (error) {
+      console.error("Submit error:", error)
       toast({
         title: "خطأ",
         description: "حدث خطأ أثناء حفظ البيانات",
@@ -204,7 +217,12 @@ const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, is
   }
 
   return (
-    <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+    <form onSubmit={handleSubmit((data) => {
+      console.log("Form data:", data)
+      handleFormSubmit(data)
+    }, (errors) => {
+      console.log("Form errors:", errors)
+    })} className="space-y-6">
       {/* Basic Information */}
       <Card>
         <CardHeader>
@@ -337,25 +355,37 @@ const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, is
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="nationalIdImage">صورة البطاقة الشخصية</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="nationalIdImage"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleFileChange}
-                    {...register("nationalIdImage")}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => document.getElementById("nationalIdImage")?.click()}
-                  >
-                    <Upload className="ml-2 h-4 w-4" />
-                    {selectedFile || "اختر ملف"}
-                  </Button>
+                <Label htmlFor={nationalIdImageId}>صورة البطاقة الشخصية</Label>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id={nationalIdImageId}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleFileChange}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => document.getElementById(nationalIdImageId)?.click()}
+                    >
+                      <Upload className="ml-2 h-4 w-4" />
+                      {selectedFile || "اختر ملف"}
+                    </Button>
+                  </div>
+                  {imagePreview && (
+                    <div className="mt-2 rounded-lg border p-2">
+                      <Image 
+                        src={imagePreview}
+                        alt="Preview"
+                        width={200}
+                        height={150}
+                        className="max-h-40 rounded object-contain"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </>
@@ -376,7 +406,7 @@ const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, is
               control={control}
               render={({ field }) => (
                 <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger id="hasAttendedSchool">
+                  <SelectTrigger id={`hasAttendedSchool-${memberIndex}`}>
                     <SelectValue placeholder="اختر" />
                   </SelectTrigger>
                   <SelectContent>
@@ -436,13 +466,13 @@ const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, is
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="currentlyEnrolled">هل منتظم في الدراسة حالياً؟</Label>
+                <Label htmlFor="isCurrentlyEnrolled">هل منتظم في الدراسة حالياً؟</Label>
                 <Controller
-                  name="currentlyEnrolled"
+                  name="isCurrentlyEnrolled"
                   control={control}
                   render={({ field }) => (
                     <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger id="currentlyEnrolled">
+                      <SelectTrigger id="isCurrentlyEnrolled">
                         <SelectValue placeholder="اختر" />
                       </SelectTrigger>
                       <SelectContent>
@@ -456,44 +486,48 @@ const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, is
             </>
           )}
 
-          <div className="space-y-2">
-            <Label htmlFor="canReadAndWrite">هل يجيد القراءة والكتابة؟</Label>
-            <Controller
-              name="canReadAndWrite"
-              control={control}
-              render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger id="canReadAndWrite">
-                    <SelectValue placeholder="اختر" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="yes">نعم</SelectItem>
-                    <SelectItem value="no">لا</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
-          </div>
+          {watchHasAttendedSchool === "no" && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="canReadAndWrite">هل يجيد القراءة والكتابة؟</Label>
+                <Controller
+                  name="canReadAndWrite"
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger id="canReadAndWrite">
+                        <SelectValue placeholder="اختر" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="yes">نعم</SelectItem>
+                        <SelectItem value="no">لا</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
 
-          {watchCanReadAndWrite === "yes" && (
-            <div className="space-y-2">
-              <Label htmlFor="hasLiteracyCertificate">هل حاصل على شهادة محو الأمية؟</Label>
-              <Controller
-                name="hasLiteracyCertificate"
-                control={control}
-                render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger id="hasLiteracyCertificate">
-                      <SelectValue placeholder="اختر" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="yes">نعم</SelectItem>
-                      <SelectItem value="no">لا</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </div>
+              {watchCanReadAndWrite === "yes" && (
+                <div className="space-y-2">
+                  <Label htmlFor="hasLiteracyCertificate">هل حاصل على شهادة محو الأمية؟</Label>
+                  <Controller
+                    name="hasLiteracyCertificate"
+                    control={control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <SelectTrigger id="hasLiteracyCertificate">
+                          <SelectValue placeholder="اختر" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="yes">نعم</SelectItem>
+                          <SelectItem value="no">لا</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -505,13 +539,13 @@ const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, is
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="isEmployed">هل يعمل؟</Label>
+            <Label htmlFor="isWorking">هل يعمل؟</Label>
             <Controller
-              name="isEmployed"
+              name="isWorking"
               control={control}
               render={({ field }) => (
                 <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger id="isEmployed">
+                  <SelectTrigger id="isWorking">
                     <SelectValue placeholder="اختر" />
                   </SelectTrigger>
                   <SelectContent>
@@ -591,13 +625,13 @@ const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, is
 
           {watchIsEmployed === "no" && (
             <div className="space-y-2">
-              <Label htmlFor="unemploymentReason">سبب عدم العمل</Label>
+              <Label htmlFor="notWorkingReason">سبب عدم العمل</Label>
               <Controller
-                name="unemploymentReason"
+                name="notWorkingReason"
                 control={control}
                 render={({ field }) => (
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger id="unemploymentReason">
+                    <SelectTrigger id="notWorkingReason">
                       <SelectValue placeholder="اختر السبب" />
                     </SelectTrigger>
                     <SelectContent>
@@ -783,28 +817,40 @@ const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, is
           {watchHasHealthIssue === "yes" && (
             <>
               <div className="space-y-2">
-                <Label htmlFor="healthIssueType">نوع المرض/الإعاقة</Label>
-                <Controller
-                  name="healthIssueType"
-                  control={control}
-                  render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value || ""}>
-                      <SelectTrigger id="healthIssueType">
-                        <SelectValue placeholder="اختر نوع المرض/الإعاقة" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="chronic">مرض مزمن</SelectItem>
-                        <SelectItem value="physical">إعاقة حركية</SelectItem>
-                        <SelectItem value="mental">إعاقة ذهنية</SelectItem>
-                        <SelectItem value="other">أخرى</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                {errors.healthIssueType && <p className="text-sm text-red-500">{errors.healthIssueType.message}</p>}
+                <Label>نوع المرض/الإعاقة</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  {[
+                    { value: "chronic", label: "مرض مزمن" },
+                    { value: "physical", label: "إعاقة حركية" },
+                    { value: "mental", label: "إعاقة ذهنية" },
+                    { value: "other", label: "أخرى" }
+                  ].map((type) => (
+                    <div key={type.value} className="flex items-center space-x-2">
+                      <Controller
+                        name="healthIssueType"
+                        control={control}
+                        render={({ field }) => (
+                          <Checkbox
+                            id={`healthIssueType-${type.value}`}
+                            checked={field.value?.includes(type.value)}
+                            onCheckedChange={(checked) => {
+                              const updatedValue = checked
+                                ? [...(field.value || []), type.value]
+                                : (field.value || []).filter((value) => value !== type.value)
+                              field.onChange(updatedValue)
+                            }}
+                          />
+                        )}
+                      />
+                      <Label htmlFor={`healthIssueType-${type.value}`} className="mr-2">
+                        {type.label}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              {watchHealthIssueType === "chronic" && (
+              {watchHealthIssueType?.includes("chronic") && (
                 <div className="space-y-2">
                   <Label>الأمراض المزمنة</Label>
                   <div className="grid grid-cols-2 gap-4">
@@ -836,10 +882,14 @@ const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, is
                 </div>
               )}
 
-              {watchHealthIssueType === "other" && (
+              {watchHealthIssueType?.includes("other") && (
                 <div className="space-y-2">
-                  <Label htmlFor="otherHealthIssue">حدد نوع المرض/الإعاقة</Label>
-                  <Input id="otherHealthIssue" {...register("otherHealthIssue")} className="text-right" />
+                  <Label htmlFor="otherChronicDisease">حدد نوع المرض/الإعاقة</Label>
+                  <Input 
+                    id="otherChronicDisease" 
+                    {...register("otherChronicDisease")} 
+                    className="text-right" 
+                  />
                 </div>
               )}
 
@@ -865,13 +915,13 @@ const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, is
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="treatmentCostCoverage">كيف تتغطى تكاليف العلاج للأسرة؟</Label>
+                <Label htmlFor="medicalExpensesCoverage">كيف تتغطى تكاليف العلاج للأسرة؟</Label>
                 <Controller
-                  name="treatmentCostCoverage"
+                  name="medicalExpensesCoverage"
                   control={control}
                   render={({ field }) => (
                     <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger id="treatmentCostCoverage">
+                      <SelectTrigger id="medicalExpensesCoverage">
                         <SelectValue placeholder="اختر طريقة تغطية التكاليف" />
                       </SelectTrigger>
                       <SelectContent>
@@ -887,13 +937,13 @@ const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, is
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="requiredAssistance">ما هو احتياجك من المؤسسة للمساعدة؟</Label>
+                <Label htmlFor="requiredMedicalAssistance">ما هو احتياجك من المؤسسة للمساعدة؟</Label>
                 <Controller
-                  name="requiredAssistance"
+                  name="requiredMedicalAssistance"
                   control={control}
                   render={({ field }) => (
                     <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger id="requiredAssistance">
+                      <SelectTrigger id="requiredMedicalAssistance">
                         <SelectValue placeholder="اختر نوع المساعدة المطلوبة" />
                       </SelectTrigger>
                       <SelectContent>
@@ -911,6 +961,35 @@ const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, is
           )}
         </CardContent>
       </Card>
+
+      {/* Questions for married individuals */}
+      {watchMaritalStatus !== "single" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>أسئلة خاصة</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="hasMarriedDaughterUnder18">هل لديك ابنة متزوجة تقل عن 18 عاماً؟</Label>
+              <Controller
+                name="hasMarriedDaughterUnder18"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger id="hasMarriedDaughterUnder18">
+                      <SelectValue placeholder="اختر" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yes">نعم</SelectItem>
+                      <SelectItem value="no">لا</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Female-specific questions */}
       {watchGender === "female" && (
@@ -937,30 +1016,44 @@ const HouseholdForm: React.FC<HouseholdFormProps> = ({ memberIndex, onSubmit, is
                 )}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="hasMarriedDaughterUnder18">هل لديك ابنة متزوجة تقل عن 18 عاماً؟</Label>
-              <Controller
-                name="hasMarriedDaughterUnder18"
-                control={control}
-                render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger id="hasMarriedDaughterUnder18">
-                      <SelectValue placeholder="اختر" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="yes">نعم</SelectItem>
-                      <SelectItem value="no">لا</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </div>
+            {watchHasFGM === "yes" && (
+              <div className="space-y-2">
+                <Label htmlFor="whereFGM">أين خضعت لعملية الختان؟</Label>
+                <Controller
+                  name="whereFGM"
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger id="whereFGM">
+                        <SelectValue placeholder="اختر" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="doctor">طبيب</SelectItem>
+                        <SelectItem value="nurse">ممرضة</SelectItem>
+                        <SelectItem value="يaya">داية</SelectItem>
+                        <SelectItem value="other">أخرى</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+            )}
+            {watchWhereFGM === "other" && (
+              <div className="space-y-2">
+                <Label htmlFor="otherWhereFGM">أين خضعت لعملية الختان؟</Label>
+                <Input id="otherWhereFGM" {...register("otherWhereFGM")} className="text-right" />
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
 
-      <Button type="submit" className="w-full" disabled={isSaving || isSubmitted}>
-        {isSaving ? "جاري الحفظ..." : isSubmitted ? "تم الحفظ" : "حفظ بيانات الفرد"}
+      <Button 
+        type="submit" 
+        className="w-full" 
+        disabled={isSaving || isSubmitted}
+      >
+        {isSaving ? "جاري الحفظ..." : "حفظ بيانات الأسرة"}
       </Button>
     </form>
   )

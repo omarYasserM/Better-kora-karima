@@ -10,19 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "@/components/ui/use-toast"
-
-// Age categories
-const ageCategories = [
-  { value: "under8", label: "أقل من 8" },
-  { value: "8-10", label: "8-10" },
-  { value: "11-14", label: "11-14" },
-  { value: "15-18", label: "15-18" },
-  { value: "19-29", label: "19-29" },
-  { value: "30-39", label: "30-39" },
-  { value: "40-49", label: "40-49" },
-  { value: "50-60", label: "50-60" },
-  { value: "over60", label: "أكبر من 60" },
-]
+import { FamilyMember } from "@/types"
 
 // Educational stages
 const educationalStages = [
@@ -84,6 +72,18 @@ const chronicDiseases = [
 
 // Form schema
 const formSchema = z.object({
+  // Basic Information
+  name: z
+    .string()
+    .min(1, "هذا الحقل مطلوب")
+    .regex(/^[\u0600-\u06FF\s]+$/, "يجب إدخال الاسم باللغة العربية فقط"),
+  kinshipRelation: z.string().min(1, "هذا الحقل مطلوب"),
+  gender: z.string().min(1, "هذا الحقل مطلوب"),
+  ageGroup: z.string().min(1, "هذا الحقل مطلوب"),
+  maritalStatus: z.string().min(1, "هذا الحقل مطلوب"),
+  hasNationalId: z.string().min(1, "هذا الحقل مطلوب"),
+  nationalId: z.string().optional(),
+
   // Educational Status
   wentToSchool: z.string().min(1, "هذا الحقل مطلوب"),
   reasonForNotAttending: z.string().optional(),
@@ -110,38 +110,51 @@ const formSchema = z.object({
 
   // Health Status
   hasHealthIssue: z.string().min(1, "هذا الحقل مطلوب"),
+  healthIssueType: z.array(z.string()).optional(),
   chronicDiseases: z.array(z.string()).optional(),
   otherChronicDisease: z.string().optional(),
   disabilityType: z.string().optional(),
   disabilityCause: z.string().optional(),
   treatmentLocation: z.string().optional(),
+  otherTreatmentLocation: z.string().optional(),
   medicalExpensesCoverage: z.string().optional(),
-  requiredMedicalAssistance: z.array(z.string()).optional(),
-})
+  otherMedicalExpensesCoverage: z.string().optional(),
+  requiredMedicalAssistance: z.string().optional(),
+}).transform((data): FamilyMember => ({
+  ...data,
+  hasAttendedSchool: data.wentToSchool,
+  hasHealthIssue: data.hasHealthIssue || "no",
+  healthIssueType: data.healthIssueType || [],
+  chronicDiseases: data.chronicDiseases || [],
+  requiredMedicalAssistance: data.requiredMedicalAssistance || ""
+}))
 
 type FormData = z.infer<typeof formSchema>
 
 interface FamilyMemberFormProps {
   memberIndex: number
-  onSubmit: (data: FormData) => void
+  onSubmit: (data: FamilyMember) => void
   isSubmitted: boolean
 }
 
 export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyMemberFormProps) {
-  const [selectedAge, setSelectedAge] = useState("")
   const [showOtherBusinessType, setShowOtherBusinessType] = useState(false)
   const [showOtherSkillType, setShowOtherSkillType] = useState(false)
   const [showOtherTrainingField, setShowOtherTrainingField] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [showOtherChronicDisease, setShowOtherChronicDisease] = useState(false)
+  const [showOtherTreatmentLocation, setShowOtherTreatmentLocation] = useState(false)
+  const [showOtherMedicalExpensesCoverage, setShowOtherMedicalExpensesCoverage] = useState(false)
 
   const {
     register,
     control,
     handleSubmit,
     watch,
-    formState: { errors, isValid },
+    formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
+    mode: "onSubmit"
   })
 
   const watchWentToSchool = watch("wentToSchool")
@@ -153,9 +166,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
   const watchHasHealthIssue = watch("hasHealthIssue")
 
   const handleFormSubmit = async (data: FormData) => {
-    setIsSaving(true)
+    console.log("Form submitted", data)
+    console.log("Form errors", errors)
+    
     try {
-      // Simulate API call
+      setIsSaving(true)
       await new Promise((resolve) => setTimeout(resolve, 1000))
       onSubmit(data)
       toast({
@@ -163,6 +178,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
         description: `تم حفظ بيانات الفرد ${memberIndex + 1} بنجاح`,
       })
     } catch (error) {
+      console.error("Submit error:", error)
       toast({
         title: "خطأ",
         description: "حدث خطأ أثناء حفظ البيانات",
@@ -201,6 +217,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                 </Select>
               )}
             />
+            {errors.wentToSchool && <p className="text-sm text-red-500">{errors.wentToSchool.message}</p>}
           </div>
 
           {watchWentToSchool === "no" && (
@@ -223,6 +240,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                   </Select>
                 )}
               />
+              {errors.reasonForNotAttending && <p className="text-sm text-red-500">{errors.reasonForNotAttending.message}</p>}
             </div>
           )}
 
@@ -247,6 +265,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                   </Select>
                 )}
               />
+              {errors.lastEducationalStage && <p className="text-sm text-red-500">{errors.lastEducationalStage.message}</p>}
             </div>
           )}
 
@@ -267,11 +286,12 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                 </Select>
               )}
             />
+            {errors.isCurrentlyEnrolled && <p className="text-sm text-red-500">{errors.isCurrentlyEnrolled.message}</p>}
           </div>
 
           {watchIsCurrentlyEnrolled === "no" && (
             <div className="space-y-2">
-              <Label htmlFor={`reasonForNotEnrolled-${memberIndex}`}>ما هي أسبا�� عدم الذهاب للمدرسة لهذا العام؟</Label>
+              <Label htmlFor={`reasonForNotEnrolled-${memberIndex}`}>ما هي أسباب عدم الذهاب للمدرسة لهذا العام؟</Label>
               <Controller
                 name="reasonForNotEnrolled"
                 control={control}
@@ -289,13 +309,15 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                   </Select>
                 )}
               />
+              {errors.reasonForNotEnrolled && <p className="text-sm text-red-500">{errors.reasonForNotEnrolled.message}</p>}
             </div>
           )}
 
-          <div className="space-y-2">
-            <Label htmlFor={`hasLiteracyCertificate-${memberIndex}`}>هل حاصل على شهادة محو الأمية؟</Label>
-            <Controller
-              name="hasLiteracyCertificate"
+          {watchWentToSchool === "no" && (
+            <div className="space-y-2">
+              <Label htmlFor={`hasLiteracyCertificate-${memberIndex}`}>هل حاصل على شهادة محو الأمية؟</Label>
+              <Controller
+                name="hasLiteracyCertificate"
               control={control}
               render={({ field }) => (
                 <Select onValueChange={field.onChange} value={field.value}>
@@ -309,7 +331,9 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                 </Select>
               )}
             />
+            {errors.hasLiteracyCertificate && <p className="text-sm text-red-500">{errors.hasLiteracyCertificate.message}</p>}
           </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor={`canReadAndWrite-${memberIndex}`}>هل يجيد القراءة والكتابة؟</Label>
@@ -328,6 +352,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                 </Select>
               )}
             />
+            {errors.canReadAndWrite && <p className="text-sm text-red-500">{errors.canReadAndWrite.message}</p>}
           </div>
         </div>
 
@@ -352,6 +377,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                 </Select>
               )}
             />
+            {errors.isWorking && <p className="text-sm text-red-500">{errors.isWorking.message}</p>}
           </div>
 
           {watchIsWorking === "yes" && (
@@ -376,6 +402,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                     </Select>
                   )}
                 />
+                {errors.jobType && <p className="text-sm text-red-500">{errors.jobType.message}</p>}
               </div>
 
               <div className="space-y-2">
@@ -396,6 +423,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                     </Select>
                   )}
                 />
+                {errors.sector && <p className="text-sm text-red-500">{errors.sector.message}</p>}
               </div>
 
               <div className="space-y-2">
@@ -417,6 +445,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                     </Select>
                   )}
                 />
+                {errors.workNature && <p className="text-sm text-red-500">{errors.workNature.message}</p>}
               </div>
             </>
           )}
@@ -441,6 +470,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                   </Select>
                 )}
               />
+              {errors.notWorkingReason && <p className="text-sm text-red-500">{errors.notWorkingReason.message}</p>}
             </div>
           )}
 
@@ -461,6 +491,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                 </Select>
               )}
             />
+            {errors.hasPrivateBusiness && <p className="text-sm text-red-500">{errors.hasPrivateBusiness.message}</p>}
           </div>
 
           {watchHasPrivateBusiness === "yes" && (
@@ -491,6 +522,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                     </Select>
                   )}
                 />
+                {errors.businessType && <p className="text-sm text-red-500">{errors.businessType.message}</p>}
               </div>
 
               {showOtherBusinessType && (
@@ -502,6 +534,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                     maxLength={50}
                     {...register("otherBusinessType")}
                   />
+                  {errors.otherBusinessType && <p className="text-sm text-red-500">{errors.otherBusinessType.message}</p>}
                 </div>
               )}
             </>
@@ -524,6 +557,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                 </Select>
               )}
             />
+            {errors.hasUnusedSkill && <p className="text-sm text-red-500">{errors.hasUnusedSkill.message}</p>}
           </div>
 
           {watchHasUnusedSkill === "yes" && (
@@ -554,6 +588,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                     </Select>
                   )}
                 />
+                {errors.skillType && <p className="text-sm text-red-500">{errors.skillType.message}</p>}
               </div>
 
               {showOtherSkillType && (
@@ -565,6 +600,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                     maxLength={50}
                     {...register("otherSkillType")}
                   />
+                  {errors.otherSkillType && <p className="text-sm text-red-500">{errors.otherSkillType.message}</p>}
                 </div>
               )}
             </>
@@ -587,6 +623,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                 </Select>
               )}
             />
+            {errors.wantsTraining && <p className="text-sm text-red-500">{errors.wantsTraining.message}</p>}
           </div>
 
           {watchWantsTraining === "yes" && (
@@ -617,6 +654,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                     </Select>
                   )}
                 />
+                {errors.trainingField && <p className="text-sm text-red-500">{errors.trainingField.message}</p>}
               </div>
 
               {showOtherTrainingField && (
@@ -628,6 +666,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                     maxLength={50}
                     {...register("otherTrainingField")}
                   />
+                  {errors.otherTrainingField && <p className="text-sm text-red-500">{errors.otherTrainingField.message}</p>}
                 </div>
               )}
             </>
@@ -655,6 +694,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                 </Select>
               )}
             />
+            {errors.hasHealthIssue && <p className="text-sm text-red-500">{errors.hasHealthIssue.message}</p>}
           </div>
 
           {watchHasHealthIssue === "yes" && (
@@ -668,6 +708,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                         id={`disease-${disease.value}-${memberIndex}`}
                         {...register("chronicDiseases")}
                         value={disease.value}
+                        onChange={(e) => {
+                          if (disease.value === "other") {
+                            setShowOtherChronicDisease((e.target as HTMLInputElement).checked)
+                          }
+                        }}
                       />
                       <Label htmlFor={`disease-${disease.value}-${memberIndex}`} className="mr-2">
                         {disease.label}
@@ -675,7 +720,21 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                     </div>
                   ))}
                 </div>
+                {errors.chronicDiseases && <p className="text-sm text-red-500">{errors.chronicDiseases.message}</p>}
               </div>
+
+              {showOtherChronicDisease && (
+                <div className="space-y-2">
+                  <Label htmlFor={`otherChronicDisease-${memberIndex}`}>حدد المرض المزمن</Label>
+                  <Input
+                    id={`otherChronicDisease-${memberIndex}`}
+                    className="text-right"
+                    maxLength={50}
+                    {...register("otherChronicDisease")}
+                  />
+                  {errors.otherChronicDisease && <p className="text-sm text-red-500">{errors.otherChronicDisease.message}</p>}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor={`disabilityType-${memberIndex}`}>نوع الإعاقة</Label>
@@ -697,6 +756,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                     </Select>
                   )}
                 />
+                {errors.disabilityType && <p className="text-sm text-red-500">{errors.disabilityType.message}</p>}
               </div>
 
               <div className="space-y-2">
@@ -705,7 +765,13 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                   name="treatmentLocation"
                   control={control}
                   render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select
+                      onValueChange={(value) => {
+                        field.onChange(value)
+                        setShowOtherTreatmentLocation(value === "other")
+                      }}
+                      value={field.value}
+                    >
                       <SelectTrigger id={`treatmentLocation-${memberIndex}`}>
                         <SelectValue placeholder="اختر مكان العلاج" />
                       </SelectTrigger>
@@ -718,7 +784,21 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                     </Select>
                   )}
                 />
+                {errors.treatmentLocation && <p className="text-sm text-red-500">{errors.treatmentLocation.message}</p>}
               </div>
+
+              {showOtherTreatmentLocation && (
+                <div className="space-y-2">
+                  <Label htmlFor={`otherTreatmentLocation-${memberIndex}`}>حدد مكان العلاج</Label>
+                  <Input
+                    id={`otherTreatmentLocation-${memberIndex}`}
+                    className="text-right"
+                    maxLength={50}
+                    {...register("otherTreatmentLocation")}
+                  />
+                  {errors.otherTreatmentLocation && <p className="text-sm text-red-500">{errors.otherTreatmentLocation.message}</p>}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor={`medicalExpensesCoverage-${memberIndex}`}>كيف تغطي تكاليف العلاج؟</Label>
@@ -726,7 +806,13 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                   name="medicalExpensesCoverage"
                   control={control}
                   render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select
+                      onValueChange={(value) => {
+                        field.onChange(value)
+                        setShowOtherMedicalExpensesCoverage(value === "other")
+                      }}
+                      value={field.value}
+                    >
                       <SelectTrigger id={`medicalExpensesCoverage-${memberIndex}`}>
                         <SelectValue placeholder="اختر طريقة تغطية التكاليف" />
                       </SelectTrigger>
@@ -739,7 +825,21 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                     </Select>
                   )}
                 />
+                {errors.medicalExpensesCoverage && <p className="text-sm text-red-500">{errors.medicalExpensesCoverage.message}</p>}
               </div>
+
+              {showOtherMedicalExpensesCoverage && (
+                <div className="space-y-2">
+                  <Label htmlFor={`otherMedicalExpensesCoverage-${memberIndex}`}>حدد طريقة تغطية التكاليف</Label>
+                  <Input
+                    id={`otherMedicalExpensesCoverage-${memberIndex}`}
+                    className="text-right"
+                    maxLength={50}
+                    {...register("otherMedicalExpensesCoverage")}
+                  />
+                  {errors.otherMedicalExpensesCoverage && <p className="text-sm text-red-500">{errors.otherMedicalExpensesCoverage.message}</p>}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label>المساعدة الطبية المطلوبة من المؤسسة</Label>
@@ -785,12 +885,17 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
                     </Label>
                   </div>
                 </div>
+                {errors.requiredMedicalAssistance && <p className="text-sm text-red-500">{errors.requiredMedicalAssistance.message}</p>}
               </div>
             </>
           )}
         </div>
 
-        <Button type="submit" className="w-full" disabled={!isValid || isSaving || isSubmitted}>
+        <Button 
+          type="submit" 
+          className="w-full" 
+          disabled={isSaving || isSubmitted}
+        >
           {isSaving ? "جاري الحفظ..." : "حفظ بيانات الفرد"}
         </Button>
       </form>

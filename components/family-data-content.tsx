@@ -6,13 +6,14 @@ import HouseholdForm from "@/components/household-form"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/use-toast"
 import { Loader2 } from "lucide-react"
+import { FamilyMember } from "@/types"
 
 export default function FamilyDataContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { toast } = useToast()
   const [familySize, setFamilySize] = useState(0)
-  const [submittedMembers, setSubmittedMembers] = useState<any[]>([])
+  const [submittedMembers, setSubmittedMembers] = useState<FamilyMember[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [allMembersSubmitted, setAllMembersSubmitted] = useState(false)
 
@@ -24,7 +25,7 @@ export default function FamilyDataContent() {
     setFamilySize(size)
   }, [searchParams, router])
 
-  const handleMemberSubmit = (memberIndex: number, data: any) => {
+  const handleMemberSubmit = (memberIndex: number, data: FamilyMember) => {
     setSubmittedMembers((prev) => {
       const newMembers = [...prev]
       newMembers[memberIndex] = data
@@ -37,9 +38,13 @@ export default function FamilyDataContent() {
   const handleFinalSubmit = async () => {
     setIsSubmitting(true)
     try {
-      // Here you would typically send the data to your backend
-      console.log("Submitting family data:", submittedMembers)
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const response = await fetch("/api/submit-family", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ familyMembers: submittedMembers }),
+      })
+
+      if (!response.ok) throw new Error("Failed to submit data")
 
       toast({
         title: "تم حفظ البيانات",
@@ -47,9 +52,9 @@ export default function FamilyDataContent() {
         duration: 3000,
       })
 
-      // Navigate to the home page
       router.push("/")
-    } catch (error) {
+    } catch (err) {
+      console.error(err)
       toast({
         title: "خطأ",
         description: "حدث خطأ أثناء حفظ البيانات",
@@ -77,7 +82,7 @@ export default function FamilyDataContent() {
             <HouseholdForm
               key={index}
               memberIndex={index}
-              onSubmit={(data) => handleMemberSubmit(index, data)}
+              onSubmit={(data: FamilyMember) => handleMemberSubmit(index, data)}
               isSubmitted={Boolean(submittedMembers[index])}
             />
           ))}

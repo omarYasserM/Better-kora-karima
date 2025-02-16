@@ -6,13 +6,14 @@ import { FamilyMemberForm } from "@/components/family-member-form"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/use-toast"
 import { Loader2 } from "lucide-react"
+import { FamilyMember } from "@/types"
 
 export default function FamilyDataPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { toast } = useToast()
   const [familySize, setFamilySize] = useState(0)
-  const [submittedMembers, setSubmittedMembers] = useState<any[]>([])
+  const [submittedMembers, setSubmittedMembers] = useState<FamilyMember[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
@@ -23,7 +24,7 @@ export default function FamilyDataPage() {
     setFamilySize(size)
   }, [searchParams, router])
 
-  const handleMemberSubmit = (memberIndex: number, data: any) => {
+  const handleMemberSubmit = (memberIndex: number, data: FamilyMember) => {
     setSubmittedMembers((prev) => {
       const newMembers = [...prev]
       newMembers[memberIndex] = data
@@ -47,7 +48,8 @@ export default function FamilyDataPage() {
       setTimeout(() => {
         router.push("/")
       }, 1000)
-    } catch (error) {
+    } catch (err: unknown) {
+      console.error(err)
       toast({
         title: "خطأ",
         description: "حدث خطأ أثناء حفظ البيانات",
@@ -74,7 +76,12 @@ export default function FamilyDataPage() {
 
         <div className="space-y-6">
           {Array.from({ length: familySize }).map((_, index) => (
-            <FamilyMemberForm key={index} memberIndex={index} onSubmit={(data) => handleMemberSubmit(index, data)} />
+            <FamilyMemberForm 
+              key={index} 
+              memberIndex={index} 
+              onSubmit={(data) => handleMemberSubmit(index, data)} 
+              isSubmitted={Boolean(submittedMembers[index])}
+            />
           ))}
         </div>
 

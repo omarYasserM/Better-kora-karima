@@ -1,6 +1,5 @@
 "use client"
 
-import { useState } from "react"
 import { useForm, Controller } from "react-hook-form"
 import { Calendar } from "lucide-react"
 import { useRouter } from "next/navigation"
@@ -38,12 +37,10 @@ const coordinators = [
 
 export default function LoginForm() {
   const router = useRouter()
-  const [date, setDate] = useState<Date>()
   const {
     control,
     handleSubmit,
     formState: { errors },
-    setValue,
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
   })
@@ -132,7 +129,6 @@ export default function LoginForm() {
                       mode="single"
                       selected={field.value}
                       onSelect={(date) => {
-                        setDate(date)
                         field.onChange(date)
                       }}
                       initialFocus

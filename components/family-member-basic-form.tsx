@@ -180,8 +180,8 @@ export function FamilyMemberBasicForm({ memberIndex, onSubmit }: FamilyMemberBas
               type="file"
               accept="image/*"
               className="hidden"
-              onChange={handleFileChange}
               {...register("nationalIdImage")}
+              onChange={handleFileChange}
             />
             <Button
               type="button"
