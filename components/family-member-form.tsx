@@ -10,7 +10,11 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "@/components/ui/use-toast"
-import { FamilyMember } from "@/types"
+import { FamilyMember, useEntryStore } from "@/lib/store"
+import { Card } from "@/components/ui/card"
+import { useFormPersistence } from "@/hooks/use-form-persistence"
+import { FormField } from "@/components/ui/form-field"
+import { Loader2 } from "lucide-react"
 
 // Educational stages
 const educationalStages = [
@@ -70,30 +74,37 @@ const chronicDiseases = [
   { value: "other", label: "أخرى" },
 ]
 
+const validationMessages = {
+  required: "هذا الحقل مطلوب",
+  arabicOnly: "يجب إدخال الاسم باللغة العربية فقط",
+  invalidOption: "يرجى اختيار قيمة صحيحة",
+} as const
+
 // Form schema
 const formSchema = z.object({
-  // Basic Information
+  // Required base fields
   name: z
     .string()
-    .min(1, "هذا الحقل مطلوب")
-    .regex(/^[\u0600-\u06FF\s]+$/, "يجب إدخال الاسم باللغة العربية فقط"),
-  kinshipRelation: z.string().min(1, "هذا الحقل مطلوب"),
-  gender: z.string().min(1, "هذا الحقل مطلوب"),
-  ageGroup: z.string().min(1, "هذا الحقل مطلوب"),
-  maritalStatus: z.string().min(1, "هذا الحقل مطلوب"),
-  hasNationalId: z.string().min(1, "هذا الحقل مطلوب"),
-  nationalId: z.string().optional(),
+    .min(1, validationMessages.required)
+    .regex(/^[\u0600-\u06FF\s]+$/, validationMessages.arabicOnly),
+  kinshipRelation: z.string().min(1, validationMessages.required),
+  gender: z.enum(["male", "female"] as const),
+  ageGroup: z.string().min(1, validationMessages.required),
+  maritalStatus: z.string().min(1, validationMessages.required),
+  hasNationalId: z.string().min(1, validationMessages.required),
+  hasAttendedSchool: z.string().min(1, validationMessages.required),
+  wentToSchool: z.string().min(1, validationMessages.required),
+  canReadAndWrite: z.string().min(1, validationMessages.required),
+  isWorking: z.string().min(1, validationMessages.required),
+  hasHealthIssue: z.string().min(1, validationMessages.required),
 
-  // Educational Status
-  wentToSchool: z.string().min(1, "هذا الحقل مطلوب"),
+  // All conditional fields made simply optional
+ 
   reasonForNotAttending: z.string().optional(),
   lastEducationalStage: z.string().optional(),
   isCurrentlyEnrolled: z.string().optional(),
   reasonForNotEnrolled: z.string().optional(),
   hasLiteracyCertificate: z.string().optional(),
-  canReadAndWrite: z.string().min(1, "هذا الحقل مطلوب"),
-  // Employment Status
-  isWorking: z.string().min(1, "هذا الحقل مطلوب"),
   notWorkingReason: z.string().optional(),
   jobType: z.string().optional(),
   sector: z.string().optional(),
@@ -107,9 +118,6 @@ const formSchema = z.object({
   wantsTraining: z.string().optional(),
   trainingField: z.string().optional(),
   otherTrainingField: z.string().optional(),
-
-  // Health Status
-  hasHealthIssue: z.string().min(1, "هذا الحقل مطلوب"),
   healthIssueType: z.array(z.string()).optional(),
   chronicDiseases: z.array(z.string()).optional(),
   otherChronicDisease: z.string().optional(),
@@ -119,25 +127,31 @@ const formSchema = z.object({
   otherTreatmentLocation: z.string().optional(),
   medicalExpensesCoverage: z.string().optional(),
   otherMedicalExpensesCoverage: z.string().optional(),
-  requiredMedicalAssistance: z.string().optional(),
-}).transform((data): FamilyMember => ({
-  ...data,
-  hasAttendedSchool: data.wentToSchool,
-  hasHealthIssue: data.hasHealthIssue || "no",
-  healthIssueType: data.healthIssueType || [],
-  chronicDiseases: data.chronicDiseases || [],
-  requiredMedicalAssistance: data.requiredMedicalAssistance || ""
-}))
+  requiredMedicalAssistance: z.array(z.string()).optional(),
+  hasMarriedDaughterUnder18: z.string().optional(),
+  hasFGM: z.string().optional(),
+  whereFGM: z.string().optional(),
+  otherWhereFGM: z.string().optional(),
+}).refine(data => {
+  // Validate business type if has private business
+  if (data.hasPrivateBusiness === 'yes' && !data.businessType) {
+    return false;
+  }
+  return true;
+}, {
+  message: "نوع المشروع مطلوب عند اختيار 'نعم' في وجود مشروع خاص",
+  path: ["businessType"]
+});
 
 type FormData = z.infer<typeof formSchema>
 
 interface FamilyMemberFormProps {
   memberIndex: number
-  onSubmit: (data: FamilyMember) => void
-  isSubmitted: boolean
+  onSubmit: (data: FamilyMember) => Promise<void>
+  isFirst: boolean
 }
 
-export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyMemberFormProps) {
+export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMemberFormProps) {
   const [showOtherBusinessType, setShowOtherBusinessType] = useState(false)
   const [showOtherSkillType, setShowOtherSkillType] = useState(false)
   const [showOtherTrainingField, setShowOtherTrainingField] = useState(false)
@@ -146,16 +160,24 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
   const [showOtherTreatmentLocation, setShowOtherTreatmentLocation] = useState(false)
   const [showOtherMedicalExpensesCoverage, setShowOtherMedicalExpensesCoverage] = useState(false)
 
+  const form = useForm<FormData>({
+    resolver: zodResolver(formSchema),
+  })
+
+  // Enable form persistence
+  useFormPersistence(
+    form,
+    `family-member-${memberIndex}`,
+    true
+  )
+
   const {
     register,
     control,
     handleSubmit,
     watch,
-    formState: { errors },
-  } = useForm<FormData>({
-    resolver: zodResolver(formSchema),
-    mode: "onSubmit"
-  })
+    formState: { errors, isSubmitting },
+  } = form
 
   const watchWentToSchool = watch("wentToSchool")
   const watchIsCurrentlyEnrolled = watch("isCurrentlyEnrolled")
@@ -164,15 +186,23 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
   const watchHasUnusedSkill = watch("hasUnusedSkill")
   const watchWantsTraining = watch("wantsTraining")
   const watchHasHealthIssue = watch("hasHealthIssue")
+  const watchHasNationalId = watch("hasNationalId")
 
   const handleFormSubmit = async (data: FormData) => {
-    console.log("Form submitted", data)
-    console.log("Form errors", errors)
-    
     try {
       setIsSaving(true)
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      onSubmit(data)
+      
+      const familyMemberData: FamilyMember = {
+        ...data,
+        healthIssueType: data.healthIssueType || [],
+        chronicDiseases: data.chronicDiseases || [],
+        requiredMedicalAssistance: Array.isArray(data.requiredMedicalAssistance) 
+          ? data.requiredMedicalAssistance.join(",") 
+          : data.requiredMedicalAssistance
+      }
+      
+      await onSubmit(familyMemberData)
+      
       toast({
         title: "تم الحفظ",
         description: `تم حفظ بيانات الفرد ${memberIndex + 1} بنجاح`,
@@ -184,175 +214,423 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
         description: "حدث خطأ أثناء حفظ البيانات",
         variant: "destructive",
       })
+      throw error // Re-throw to let parent component handle
     } finally {
       setIsSaving(false)
     }
   }
 
-  return (
-    <div className="rounded-lg border bg-card p-6 text-card-foreground shadow-sm">
-      <h3 className="mb-6 text-xl font-semibold">
-        {memberIndex === 0 ? "بيانات الفرد الأول (رب الأسرة)" : `بيانات الفرد ${memberIndex + 1}`}
-      </h3>
+  const submitFamilyMember = async (data: FamilyMember) => {
+    try {
+      const response = await fetch('/api/submit-family', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entryId: useEntryStore.getState().entryId,
+          familyMember: data
+        })
+      })
 
-      <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+      if (!response.ok) {
+        throw new Error('Failed to submit family member')
+      }
+    } catch (error) {
+      console.error('Submission error:', error)
+      throw error
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit(handleFormSubmit,(data)=> console.log(data))} className="space-y-6">
+      <Card className="p-6">
+        <h2 className="mb-4 text-xl font-semibold">
+          {isFirst ? "بيانات رب الأسرة" : `بيانات الفرد ${memberIndex + 1}`}
+        </h2>
+
+        {/* Add this section right after the form title */}
+        <div className="space-y-4">
+          <h4 className="text-lg font-medium">البيانات الأساسية</h4>
+
+          <div className="space-y-2">
+            <FormField
+              id={`name-${memberIndex}`}
+              label="الاسم"
+              error={errors.name?.message}
+              required
+            >
+              <Input id={`name-${memberIndex}`} {...register("name")} className="text-right" />
+            </FormField>
+          </div>
+
+          <div className="space-y-2">
+            <FormField
+              id={`kinshipRelation-${memberIndex}`}
+              label="صلة القرابة"
+              error={errors.kinshipRelation?.message}
+              required
+            >
+              <Controller
+                name="kinshipRelation"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger id={`kinshipRelation-${memberIndex}`}>
+                      <SelectValue placeholder="اختر صلة القرابة" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="self">رب/ة الأسرة</SelectItem>
+                      <SelectItem value="spouse">زوج/زوجة</SelectItem>
+                      <SelectItem value="son">ابن/ابنة</SelectItem>
+                      <SelectItem value="parent">والد/والدة</SelectItem>
+                      <SelectItem value="sibling">أخ/أخت</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </FormField>
+          </div>
+
+          <div className="space-y-2">
+            <FormField
+              id={`gender-${memberIndex}`}
+              label="النوع"
+              error={errors.gender?.message}
+              required
+            >
+              <Controller
+                name="gender"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger id={`gender-${memberIndex}`}>
+                      <SelectValue placeholder="اختر النوع" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="male">ذكر</SelectItem>
+                      <SelectItem value="female">أنثى</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </FormField>
+          </div>
+
+          <div className="space-y-2">
+            <FormField
+              id={`ageGroup-${memberIndex}`}
+              label="الفئة العمرية"
+              error={errors.ageGroup?.message}
+              required
+            >
+              <Controller
+                name="ageGroup"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger id={`ageGroup-${memberIndex}`}>
+                      <SelectValue placeholder="اختر الفئة العمرية" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="under18">أقل من 18</SelectItem>
+                      <SelectItem value="18-30">18-30</SelectItem>
+                      <SelectItem value="31-50">31-50</SelectItem>
+                      <SelectItem value="above50">فوق 50</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </FormField>
+          </div>
+
+          <div className="space-y-2">
+            <FormField
+              id={`maritalStatus-${memberIndex}`}
+              label="الحالة الاجتماعية"
+              error={errors.maritalStatus?.message}
+              required
+            >
+              <Controller
+                name="maritalStatus"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger id={`maritalStatus-${memberIndex}`}>
+                      <SelectValue placeholder="اختر الحالة الاجتماعية" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="single">أعزب/عزباء</SelectItem>
+                      <SelectItem value="married">متزوج/ة</SelectItem>
+                      <SelectItem value="divorced">مطلق/ة</SelectItem>
+                      <SelectItem value="widowed">أرمل/ة</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </FormField>
+          </div>
+
+          <div className="space-y-2">
+            <FormField
+              id={`hasNationalId-${memberIndex}`}
+              label="هل لديه رقم قومي؟"
+              error={errors.hasNationalId?.message}
+              required
+            >
+              <Controller
+                name="hasNationalId"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger id={`hasNationalId-${memberIndex}`}>
+                      <SelectValue placeholder="اختر" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yes">نعم</SelectItem>
+                      <SelectItem value="no">لا</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </FormField>
+          </div>
+
+          {watchHasNationalId === "yes" && (
+            <div className="space-y-2">
+              <FormField
+                id={`nationalId-${memberIndex}`}
+                label="الرقم القومي"
+                error={errors.nationalId?.message}
+                required
+              >
+                <Input 
+                  id={`nationalId-${memberIndex}`} 
+                  {...register("nationalId")} 
+                  className="text-right" 
+                  maxLength={14}
+                  placeholder="14 رقم"
+                />
+              </FormField>
+            </div>
+          )}
+        </div>
+
         {/* Educational Status Section */}
         <div className="space-y-4">
           <h4 className="text-lg font-medium">الحالة التعليمية</h4>
 
           <div className="space-y-2">
-            <Label htmlFor={`wentToSchool-${memberIndex}`}>هل سبق له الذهاب للمدرسة؟</Label>
-            <Controller
-              name="wentToSchool"
-              control={control}
-              render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger id={`wentToSchool-${memberIndex}`}>
-                    <SelectValue placeholder="اختر" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="yes">نعم</SelectItem>
-                    <SelectItem value="no">لا</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            {errors.wentToSchool && <p className="text-sm text-red-500">{errors.wentToSchool.message}</p>}
-          </div>
-
-          {watchWentToSchool === "no" && (
-            <div className="space-y-2">
-              <Label htmlFor={`reasonForNotAttending-${memberIndex}`}>لماذا لم يذهب للمدرسة؟</Label>
+            <FormField
+              id={`hasAttendedSchool-${memberIndex}`}
+              label="هل التحق بالمدرسة؟"
+              error={errors.hasAttendedSchool?.message}
+              required
+            >
               <Controller
-                name="reasonForNotAttending"
+                name="hasAttendedSchool"
                 control={control}
                 render={({ field }) => (
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger id={`reasonForNotAttending-${memberIndex}`}>
-                      <SelectValue placeholder="اختر السبب" />
+                    <SelectTrigger id={`hasAttendedSchool-${memberIndex}`}>
+                      <SelectValue placeholder="اختر" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="tooYoung">دون سن الإلتحاق</SelectItem>
-                      <SelectItem value="academic">ضعف دراسي/رسوب</SelectItem>
-                      <SelectItem value="financial">العمل للمساعدة المالية</SelectItem>
-                      <SelectItem value="marriage">بسبب الزواج</SelectItem>
+                      <SelectItem value="yes">نعم</SelectItem>
+                      <SelectItem value="no">لا</SelectItem>
                     </SelectContent>
                   </Select>
                 )}
               />
-              {errors.reasonForNotAttending && <p className="text-sm text-red-500">{errors.reasonForNotAttending.message}</p>}
+            </FormField>
+          </div>
+
+          <div className="space-y-2">
+            <FormField
+              id={`wentToSchool-${memberIndex}`}
+              label="هل سبق له الذهاب للمدرسة؟"
+              error={errors.wentToSchool?.message}
+              required
+            >
+              <Controller
+                name="wentToSchool"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger id={`wentToSchool-${memberIndex}`}>
+                      <SelectValue placeholder="اختر" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yes">نعم</SelectItem>
+                      <SelectItem value="no">لا</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </FormField>
+          </div>
+
+          {watchWentToSchool === "no" && (
+            <div className="space-y-2">
+              <FormField
+                id={`reasonForNotAttending-${memberIndex}`}
+                label="لماذا لم يذهب للمدرسة؟"
+                error={errors.reasonForNotAttending?.message}
+                required
+              >
+                <Controller
+                  name="reasonForNotAttending"
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger id={`reasonForNotAttending-${memberIndex}`}>
+                        <SelectValue placeholder="اختر السبب" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="tooYoung">دون سن الإلتحاق</SelectItem>
+                        <SelectItem value="academic">ضعف دراسي/رسوب</SelectItem>
+                        <SelectItem value="financial">العمل للمساعدة المالية</SelectItem>
+                        <SelectItem value="marriage">بسبب الزواج</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </FormField>
             </div>
           )}
 
           {watchWentToSchool === "yes" && (
             <div className="space-y-2">
-              <Label htmlFor={`lastEducationalStage-${memberIndex}`}>ما آخر مرحلة تعليمية التحق بها؟</Label>
-              <Controller
-                name="lastEducationalStage"
-                control={control}
-                render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger id={`lastEducationalStage-${memberIndex}`}>
-                      <SelectValue placeholder="اختر المرحلة التعليمية" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {educationalStages.map((stage) => (
-                        <SelectItem key={stage.value} value={stage.value}>
-                          {stage.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              {errors.lastEducationalStage && <p className="text-sm text-red-500">{errors.lastEducationalStage.message}</p>}
+              <FormField
+                id={`lastEducationalStage-${memberIndex}`}
+                label="ما آخر مرحلة تعليمية التحق بها؟"
+                error={errors.lastEducationalStage?.message}
+                required
+              >
+                <Controller
+                  name="lastEducationalStage"
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger id={`lastEducationalStage-${memberIndex}`}>
+                        <SelectValue placeholder="اختر المرحلة التعليمية" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {educationalStages.map((stage) => (
+                          <SelectItem key={stage.value} value={stage.value}>
+                            {stage.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </FormField>
             </div>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor={`isCurrentlyEnrolled-${memberIndex}`}>هل الاسم منتظم في الدراسة لهذا العام؟</Label>
-            <Controller
-              name="isCurrentlyEnrolled"
-              control={control}
-              render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger id={`isCurrentlyEnrolled-${memberIndex}`}>
-                    <SelectValue placeholder="اختر" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="yes">نعم</SelectItem>
-                    <SelectItem value="no">لا</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            {errors.isCurrentlyEnrolled && <p className="text-sm text-red-500">{errors.isCurrentlyEnrolled.message}</p>}
-          </div>
-
-          {watchIsCurrentlyEnrolled === "no" && (
-            <div className="space-y-2">
-              <Label htmlFor={`reasonForNotEnrolled-${memberIndex}`}>ما هي أسباب عدم الذهاب للمدرسة لهذا العام؟</Label>
+            <FormField
+              id={`isCurrentlyEnrolled-${memberIndex}`}
+              label="هل الاسم منتظم في الدراسة لهذا العام؟"
+              error={errors.isCurrentlyEnrolled?.message}
+              required
+            >
               <Controller
-                name="reasonForNotEnrolled"
+                name="isCurrentlyEnrolled"
                 control={control}
                 render={({ field }) => (
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger id={`reasonForNotEnrolled-${memberIndex}`}>
-                      <SelectValue placeholder="اختر السبب" />
+                    <SelectTrigger id={`isCurrentlyEnrolled-${memberIndex}`}>
+                      <SelectValue placeholder="اختر" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="academic">ضعف دراسي</SelectItem>
-                      <SelectItem value="financial">ظروف مادية</SelectItem>
-                      <SelectItem value="social">ظروف اجتماعية</SelectItem>
-                      <SelectItem value="health">ظروف صحية</SelectItem>
+                      <SelectItem value="yes">نعم</SelectItem>
+                      <SelectItem value="no">لا</SelectItem>
                     </SelectContent>
                   </Select>
                 )}
               />
-              {errors.reasonForNotEnrolled && <p className="text-sm text-red-500">{errors.reasonForNotEnrolled.message}</p>}
+            </FormField>
+          </div>
+
+          {watchIsCurrentlyEnrolled === "no" && (
+            <div className="space-y-2">
+              <FormField
+                id={`reasonForNotEnrolled-${memberIndex}`}
+                label="ما هي أسباب عدم الذهاب للمدرسة لهذا العام؟"
+                error={errors.reasonForNotEnrolled?.message}
+                required
+              >
+                <Controller
+                  name="reasonForNotEnrolled"
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger id={`reasonForNotEnrolled-${memberIndex}`}>
+                        <SelectValue placeholder="اختر السبب" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="academic">ضعف دراسي</SelectItem>
+                        <SelectItem value="financial">ظروف مادية</SelectItem>
+                        <SelectItem value="social">ظروف اجتماعية</SelectItem>
+                        <SelectItem value="health">ظروف صحية</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </FormField>
             </div>
           )}
 
           {watchWentToSchool === "no" && (
             <div className="space-y-2">
-              <Label htmlFor={`hasLiteracyCertificate-${memberIndex}`}>هل حاصل على شهادة محو الأمية؟</Label>
-              <Controller
-                name="hasLiteracyCertificate"
-              control={control}
-              render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger id={`hasLiteracyCertificate-${memberIndex}`}>
-                    <SelectValue placeholder="اختر" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="yes">نعم</SelectItem>
-                    <SelectItem value="no">لا</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            {errors.hasLiteracyCertificate && <p className="text-sm text-red-500">{errors.hasLiteracyCertificate.message}</p>}
-          </div>
+              <FormField
+                id={`hasLiteracyCertificate-${memberIndex}`}
+                label="هل حاصل على شهادة محو الأمية؟"
+                error={errors.hasLiteracyCertificate?.message}
+                required
+              >
+                <Controller
+                  name="hasLiteracyCertificate"
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger id={`hasLiteracyCertificate-${memberIndex}`}>
+                        <SelectValue placeholder="اختر" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="yes">نعم</SelectItem>
+                        <SelectItem value="no">لا</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </FormField>
+            </div>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor={`canReadAndWrite-${memberIndex}`}>هل يجيد القراءة والكتابة؟</Label>
-            <Controller
-              name="canReadAndWrite"
-              control={control}
-              render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger id={`canReadAndWrite-${memberIndex}`}>
-                    <SelectValue placeholder="اختر" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="yes">نعم</SelectItem>
-                    <SelectItem value="no">لا</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            {errors.canReadAndWrite && <p className="text-sm text-red-500">{errors.canReadAndWrite.message}</p>}
+            <FormField
+              id={`canReadAndWrite-${memberIndex}`}
+              label="هل يجيد القراءة والكتابة؟"
+              error={errors.canReadAndWrite?.message}
+              required
+            >
+              <Controller
+                name="canReadAndWrite"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger id={`canReadAndWrite-${memberIndex}`}>
+                      <SelectValue placeholder="اختر" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yes">نعم</SelectItem>
+                      <SelectItem value="no">لا</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </FormField>
           </div>
         </div>
 
@@ -361,312 +639,382 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
           <h4 className="text-lg font-medium">الحالة الوظيفية</h4>
 
           <div className="space-y-2">
-            <Label htmlFor={`isWorking-${memberIndex}`}>هل يعمل؟</Label>
-            <Controller
-              name="isWorking"
-              control={control}
-              render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger id={`isWorking-${memberIndex}`}>
-                    <SelectValue placeholder="اختر" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="yes">نعم</SelectItem>
-                    <SelectItem value="no">لا</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            {errors.isWorking && <p className="text-sm text-red-500">{errors.isWorking.message}</p>}
+            <FormField
+              id={`isWorking-${memberIndex}`}
+              label="هل يعمل؟"
+              error={errors.isWorking?.message}
+              required
+            >
+              <Controller
+                name="isWorking"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger id={`isWorking-${memberIndex}`}>
+                      <SelectValue placeholder="اختر" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yes">نعم</SelectItem>
+                      <SelectItem value="no">لا</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </FormField>
           </div>
 
           {watchIsWorking === "yes" && (
             <>
               <div className="space-y-2">
-                <Label htmlFor={`jobType-${memberIndex}`}>ما هو العمل؟</Label>
-                <Controller
-                  name="jobType"
-                  control={control}
-                  render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger id={`jobType-${memberIndex}`}>
-                        <SelectValue placeholder="اختر نوع العمل" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {jobTypes.map((job) => (
-                          <SelectItem key={job.value} value={job.value}>
-                            {job.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                {errors.jobType && <p className="text-sm text-red-500">{errors.jobType.message}</p>}
+                <FormField
+                  id={`jobType-${memberIndex}`}
+                  label="ما هو العمل؟"
+                  error={errors.jobType?.message}
+                  required
+                >
+                  <Controller
+                    name="jobType"
+                    control={control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <SelectTrigger id={`jobType-${memberIndex}`}>
+                          <SelectValue placeholder="اختر نوع العمل" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {jobTypes.map((job) => (
+                            <SelectItem key={job.value} value={job.value}>
+                              {job.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </FormField>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor={`sector-${memberIndex}`}>ما هو القطاع؟</Label>
-                <Controller
-                  name="sector"
-                  control={control}
-                  render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger id={`sector-${memberIndex}`}>
-                        <SelectValue placeholder="اختر القطاع" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="government">حكومي</SelectItem>
-                        <SelectItem value="private">خاص</SelectItem>
-                        <SelectItem value="daily">عامل يومية</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                {errors.sector && <p className="text-sm text-red-500">{errors.sector.message}</p>}
+                <FormField
+                  id={`sector-${memberIndex}`}
+                  label="ما هو القطاع؟"
+                  error={errors.sector?.message}
+                  required
+                >
+                  <Controller
+                    name="sector"
+                    control={control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <SelectTrigger id={`sector-${memberIndex}`}>
+                          <SelectValue placeholder="اختر القطاع" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="government">حكومي</SelectItem>
+                          <SelectItem value="private">خاص</SelectItem>
+                          <SelectItem value="daily">عامل يومية</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </FormField>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor={`workNature-${memberIndex}`}>ما هي طبيعة العمل؟</Label>
-                <Controller
-                  name="workNature"
-                  control={control}
-                  render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger id={`workNature-${memberIndex}`}>
-                        <SelectValue placeholder="اختر طبيعة العمل" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="fullTime">دوام كامل</SelectItem>
-                        <SelectItem value="partTime">دوام جزئي</SelectItem>
-                        <SelectItem value="contract">عقد</SelectItem>
-                        <SelectItem value="freelance">عمل حر</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                {errors.workNature && <p className="text-sm text-red-500">{errors.workNature.message}</p>}
+                <FormField
+                  id={`workNature-${memberIndex}`}
+                  label="ما هي طبيعة العمل؟"
+                  error={errors.workNature?.message}
+                  required
+                >
+                  <Controller
+                    name="workNature"
+                    control={control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <SelectTrigger id={`workNature-${memberIndex}`}>
+                          <SelectValue placeholder="اختر طبيعة العمل" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="fullTime">دوام كامل</SelectItem>
+                          <SelectItem value="partTime">دوام جزئي</SelectItem>
+                          <SelectItem value="contract">عقد</SelectItem>
+                          <SelectItem value="freelance">عمل حر</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </FormField>
               </div>
             </>
           )}
 
           {watchIsWorking === "no" && (
             <div className="space-y-2">
-              <Label htmlFor={`notWorkingReason-${memberIndex}`}>لماذا لا يعمل؟</Label>
-              <Controller
-                name="notWorkingReason"
-                control={control}
-                render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger id={`notWorkingReason-${memberIndex}`}>
-                      <SelectValue placeholder="اختر السبب" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="tooYoung">مازال صغير/ة</SelectItem>
-                      <SelectItem value="sick">مريض/ة</SelectItem>
-                      <SelectItem value="housewife">ربة منزل</SelectItem>
-                      <SelectItem value="imprisoned">مسجون</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              {errors.notWorkingReason && <p className="text-sm text-red-500">{errors.notWorkingReason.message}</p>}
+              <FormField
+                id={`notWorkingReason-${memberIndex}`}
+                label="لماذا لا يعمل؟"
+                error={errors.notWorkingReason?.message}
+                required
+              >
+                <Controller
+                  name="notWorkingReason"
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger id={`notWorkingReason-${memberIndex}`}>
+                        <SelectValue placeholder="اختر السبب" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="tooYoung">مازال صغير/ة</SelectItem>
+                        <SelectItem value="sick">مريض/ة</SelectItem>
+                        <SelectItem value="housewife">ربة منزل</SelectItem>
+                        <SelectItem value="imprisoned">مسجون</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </FormField>
             </div>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor={`hasPrivateBusiness-${memberIndex}`}>هل لديك مشروع خاص؟</Label>
-            <Controller
-              name="hasPrivateBusiness"
-              control={control}
-              render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger id={`hasPrivateBusiness-${memberIndex}`}>
-                    <SelectValue placeholder="اختر" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="yes">نعم</SelectItem>
-                    <SelectItem value="no">لا</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            {errors.hasPrivateBusiness && <p className="text-sm text-red-500">{errors.hasPrivateBusiness.message}</p>}
+            <FormField
+              id={`hasPrivateBusiness-${memberIndex}`}
+              label="هل لديك مشروع خاص؟"
+              error={errors.hasPrivateBusiness?.message}
+              required
+            >
+              <Controller
+                name="hasPrivateBusiness"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger id={`hasPrivateBusiness-${memberIndex}`}>
+                      <SelectValue placeholder="اختر" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yes">نعم</SelectItem>
+                      <SelectItem value="no">لا</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </FormField>
           </div>
 
           {watchHasPrivateBusiness === "yes" && (
             <>
               <div className="space-y-2">
-                <Label htmlFor={`businessType-${memberIndex}`}>ما هو المشروع؟</Label>
-                <Controller
-                  name="businessType"
-                  control={control}
-                  render={({ field }) => (
-                    <Select
-                      onValueChange={(value) => {
-                        field.onChange(value)
-                        setShowOtherBusinessType(value === "other")
-                      }}
-                      value={field.value}
-                    >
-                      <SelectTrigger id={`businessType-${memberIndex}`}>
-                        <SelectValue placeholder="اختر نوع المشروع" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {businessTypes.map((type) => (
-                          <SelectItem key={type.value} value={type.value}>
-                            {type.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                {errors.businessType && <p className="text-sm text-red-500">{errors.businessType.message}</p>}
+                <FormField
+                  id={`businessType-${memberIndex}`}
+                  label="ما هو المشروع؟"
+                  error={errors.businessType?.message}
+                  required
+                >
+                  <Controller
+                    name="businessType"
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        onValueChange={(value) => {
+                          field.onChange(value)
+                          setShowOtherBusinessType(value === "other")
+                        }}
+                        value={field.value}
+                      >
+                        <SelectTrigger id={`businessType-${memberIndex}`}>
+                          <SelectValue placeholder="اختر نوع المشروع" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {businessTypes.map((type) => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </FormField>
               </div>
 
               {showOtherBusinessType && (
                 <div className="space-y-2">
-                  <Label htmlFor={`otherBusinessType-${memberIndex}`}>اذكر نوع المشروع</Label>
-                  <Input
+                  <FormField
                     id={`otherBusinessType-${memberIndex}`}
-                    className="text-right"
-                    maxLength={50}
-                    {...register("otherBusinessType")}
-                  />
-                  {errors.otherBusinessType && <p className="text-sm text-red-500">{errors.otherBusinessType.message}</p>}
+                    label="اذكر نوع المشروع"
+                    error={errors.otherBusinessType?.message}
+                    required
+                  >
+                    <Input
+                      id={`otherBusinessType-${memberIndex}`}
+                      className="text-right"
+                      maxLength={50}
+                      {...register("otherBusinessType")}
+                    />
+                  </FormField>
                 </div>
               )}
             </>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor={`hasUnusedSkill-${memberIndex}`}>هل لديه مهارة أو حرفة ولا يمارسها؟</Label>
-            <Controller
-              name="hasUnusedSkill"
-              control={control}
-              render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger id={`hasUnusedSkill-${memberIndex}`}>
-                    <SelectValue placeholder="اختر" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="yes">نعم</SelectItem>
-                    <SelectItem value="no">لا</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            {errors.hasUnusedSkill && <p className="text-sm text-red-500">{errors.hasUnusedSkill.message}</p>}
+            <FormField
+              id={`hasUnusedSkill-${memberIndex}`}
+              label="هل لديه مهارة أو حرفة ولا يمارسها؟"
+              error={errors.hasUnusedSkill?.message}
+              required
+            >
+              <Controller
+                name="hasUnusedSkill"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger id={`hasUnusedSkill-${memberIndex}`}>
+                      <SelectValue placeholder="اختر" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yes">نعم</SelectItem>
+                      <SelectItem value="no">لا</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </FormField>
           </div>
 
           {watchHasUnusedSkill === "yes" && (
             <>
               <div className="space-y-2">
-                <Label htmlFor={`skillType-${memberIndex}`}>ما هي المهارة أو الحرفة؟</Label>
-                <Controller
-                  name="skillType"
-                  control={control}
-                  render={({ field }) => (
-                    <Select
-                      onValueChange={(value) => {
-                        field.onChange(value)
-                        setShowOtherSkillType(value === "other")
-                      }}
-                      value={field.value}
-                    >
-                      <SelectTrigger id={`skillType-${memberIndex}`}>
-                        <SelectValue placeholder="اختر نوع المهارة" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {skillTypes.map((type) => (
-                          <SelectItem key={type.value} value={type.value}>
-                            {type.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                {errors.skillType && <p className="text-sm text-red-500">{errors.skillType.message}</p>}
+                <FormField
+                  id={`skillType-${memberIndex}`}
+                  label="ما هي المهارة أو الحرفة؟"
+                  error={errors.skillType?.message}
+                  required
+                >
+                  <Controller
+                    name="skillType"
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        onValueChange={(value) => {
+                          field.onChange(value)
+                          setShowOtherSkillType(value === "other")
+                        }}
+                        value={field.value}
+                      >
+                        <SelectTrigger id={`skillType-${memberIndex}`}>
+                          <SelectValue placeholder="اختر نوع المهارة" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {skillTypes.map((type) => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </FormField>
               </div>
 
               {showOtherSkillType && (
                 <div className="space-y-2">
-                  <Label htmlFor={`otherSkillType-${memberIndex}`}>اذكر نوع المهارة</Label>
-                  <Input
+                  <FormField
                     id={`otherSkillType-${memberIndex}`}
-                    className="text-right"
-                    maxLength={50}
-                    {...register("otherSkillType")}
-                  />
-                  {errors.otherSkillType && <p className="text-sm text-red-500">{errors.otherSkillType.message}</p>}
+                    label="اذكر نوع المهارة"
+                    error={errors.otherSkillType?.message}
+                    required
+                  >
+                    <Input
+                      id={`otherSkillType-${memberIndex}`}
+                      className="text-right"
+                      maxLength={50}
+                      {...register("otherSkillType")}
+                    />
+                  </FormField>
                 </div>
               )}
             </>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor={`wantsTraining-${memberIndex}`}>هل لديك استعداد للتدريب على مهنة معينة أو مجال معين؟</Label>
-            <Controller
-              name="wantsTraining"
-              control={control}
-              render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger id={`wantsTraining-${memberIndex}`}>
-                    <SelectValue placeholder="اختر" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="yes">نعم</SelectItem>
-                    <SelectItem value="no">لا</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            {errors.wantsTraining && <p className="text-sm text-red-500">{errors.wantsTraining.message}</p>}
+            <FormField
+              id={`wantsTraining-${memberIndex}`}
+              label="هل لديك استعداد للتدريب على مهنة معينة أو مجال معين؟"
+              error={errors.wantsTraining?.message}
+              required
+            >
+              <Controller
+                name="wantsTraining"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger id={`wantsTraining-${memberIndex}`}>
+                      <SelectValue placeholder="اختر" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yes">نعم</SelectItem>
+                      <SelectItem value="no">لا</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </FormField>
           </div>
 
           {watchWantsTraining === "yes" && (
             <>
               <div className="space-y-2">
-                <Label htmlFor={`trainingField-${memberIndex}`}>ما هو المجال الذي ترغب في التدريب عليه؟</Label>
-                <Controller
-                  name="trainingField"
-                  control={control}
-                  render={({ field }) => (
-                    <Select
-                      onValueChange={(value) => {
-                        field.onChange(value)
-                        setShowOtherTrainingField(value === "other")
-                      }}
-                      value={field.value}
-                    >
-                      <SelectTrigger id={`trainingField-${memberIndex}`}>
-                        <SelectValue placeholder="اختر مجال التدريب" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {trainingFields.map((field) => (
-                          <SelectItem key={field.value} value={field.value}>
-                            {field.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                {errors.trainingField && <p className="text-sm text-red-500">{errors.trainingField.message}</p>}
+                <FormField
+                  id={`trainingField-${memberIndex}`}
+                  label="ما هو المجال الذي ترغب في التدريب عليه؟"
+                  error={errors.trainingField?.message}
+                  required
+                >
+                  <Controller
+                    name="trainingField"
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        onValueChange={(value) => {
+                          field.onChange(value)
+                          setShowOtherTrainingField(value === "other")
+                        }}
+                        value={field.value}
+                      >
+                        <SelectTrigger id={`trainingField-${memberIndex}`}>
+                          <SelectValue placeholder="اختر مجال التدريب" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {trainingFields.map((field) => (
+                            <SelectItem key={field.value} value={field.value}>
+                              {field.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </FormField>
               </div>
 
               {showOtherTrainingField && (
                 <div className="space-y-2">
-                  <Label htmlFor={`otherTrainingField-${memberIndex}`}>اذكر مجال التدريب</Label>
-                  <Input
+                  <FormField
                     id={`otherTrainingField-${memberIndex}`}
-                    className="text-right"
-                    maxLength={50}
-                    {...register("otherTrainingField")}
-                  />
-                  {errors.otherTrainingField && <p className="text-sm text-red-500">{errors.otherTrainingField.message}</p>}
+                    label="اذكر مجال التدريب"
+                    error={errors.otherTrainingField?.message}
+                    required
+                  >
+                    <Input
+                      id={`otherTrainingField-${memberIndex}`}
+                      className="text-right"
+                      maxLength={50}
+                      {...register("otherTrainingField")}
+                    />
+                  </FormField>
                 </div>
               )}
             </>
@@ -678,228 +1026,282 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isSubmitted }: FamilyM
           <h4 className="text-lg font-medium">الحالة الصحية</h4>
 
           <div className="space-y-2">
-            <Label htmlFor={`hasHealthIssue-${memberIndex}`}>هل يعاني من مرض مزمن أو إعاقة أو مرض نفسي؟</Label>
-            <Controller
-              name="hasHealthIssue"
-              control={control}
-              render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <SelectTrigger id={`hasHealthIssue-${memberIndex}`}>
-                    <SelectValue placeholder="اختر" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="yes">نعم</SelectItem>
-                    <SelectItem value="no">لا</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            {errors.hasHealthIssue && <p className="text-sm text-red-500">{errors.hasHealthIssue.message}</p>}
+            <FormField
+              id={`hasHealthIssue-${memberIndex}`}
+              label="هل يعاني من مرض مزمن أو إعاقة أو مرض نفسي؟"
+              error={errors.hasHealthIssue?.message}
+              required
+            >
+              <Controller
+                name="hasHealthIssue"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger id={`hasHealthIssue-${memberIndex}`}>
+                      <SelectValue placeholder="اختر" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yes">نعم</SelectItem>
+                      <SelectItem value="no">لا</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </FormField>
           </div>
 
           {watchHasHealthIssue === "yes" && (
             <>
               <div className="space-y-2">
-                <Label>الأمراض المزمنة</Label>
-                <div className="grid grid-cols-2 gap-4">
-                  {chronicDiseases.map((disease) => (
-                    <div key={disease.value} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`disease-${disease.value}-${memberIndex}`}
-                        {...register("chronicDiseases")}
-                        value={disease.value}
-                        onChange={(e) => {
-                          if (disease.value === "other") {
-                            setShowOtherChronicDisease((e.target as HTMLInputElement).checked)
-                          }
-                        }}
-                      />
-                      <Label htmlFor={`disease-${disease.value}-${memberIndex}`} className="mr-2">
-                        {disease.label}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-                {errors.chronicDiseases && <p className="text-sm text-red-500">{errors.chronicDiseases.message}</p>}
+                <FormField
+                  id={`chronicDiseases-${memberIndex}`}
+                  label="الأمراض المزمنة"
+                  error={errors.chronicDiseases?.message}
+                  required
+                >
+                  <div className="grid grid-cols-2 gap-4">
+                    {chronicDiseases.map((disease) => (
+                      <div key={disease.value} className="flex items-center space-x-2">
+                        <Controller
+                          name="chronicDiseases"
+                          control={control}
+                          defaultValue={[]}
+                          render={({ field }) => (
+                            <Checkbox
+                              id={`disease-${disease.value}-${memberIndex}`}
+                              checked={field.value?.includes(disease.value)}
+                              onCheckedChange={(checked) => {
+                                const updatedValue = checked === true
+                                  ? [...(field.value || []), disease.value]
+                                  : (field.value || []).filter((value) => value !== disease.value)
+                                field.onChange(updatedValue)
+                                if (disease.value === "other") {
+                                  setShowOtherChronicDisease(checked === true)
+                                }
+                              }}
+                            />
+                          )}
+                        />
+                        <Label htmlFor={`disease-${disease.value}-${memberIndex}`} className="mr-2">
+                          {disease.label}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </FormField>
               </div>
 
               {showOtherChronicDisease && (
                 <div className="space-y-2">
-                  <Label htmlFor={`otherChronicDisease-${memberIndex}`}>حدد المرض المزمن</Label>
-                  <Input
+                  <FormField
                     id={`otherChronicDisease-${memberIndex}`}
-                    className="text-right"
-                    maxLength={50}
-                    {...register("otherChronicDisease")}
-                  />
-                  {errors.otherChronicDisease && <p className="text-sm text-red-500">{errors.otherChronicDisease.message}</p>}
+                    label="حدد المرض المزمن"
+                    error={errors.otherChronicDisease?.message}
+                    required
+                  >
+                    <Input
+                      id={`otherChronicDisease-${memberIndex}`}
+                      className="text-right"
+                      maxLength={50}
+                      {...register("otherChronicDisease")}
+                    />
+                  </FormField>
                 </div>
               )}
 
               <div className="space-y-2">
-                <Label htmlFor={`disabilityType-${memberIndex}`}>نوع الإعاقة</Label>
-                <Controller
-                  name="disabilityType"
-                  control={control}
-                  render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger id={`disabilityType-${memberIndex}`}>
-                        <SelectValue placeholder="اختر نوع الإعاقة" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="physical">حركية</SelectItem>
-                        <SelectItem value="hearing">سمعية</SelectItem>
-                        <SelectItem value="visual">بصرية</SelectItem>
-                        <SelectItem value="mental">ذهنية</SelectItem>
-                        <SelectItem value="multiple">متعددة</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                {errors.disabilityType && <p className="text-sm text-red-500">{errors.disabilityType.message}</p>}
+                <FormField
+                  id={`disabilityType-${memberIndex}`}
+                  label="نوع الإعاقة"
+                  error={errors.disabilityType?.message}
+                  required
+                >
+                  <Controller
+                    name="disabilityType"
+                    control={control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <SelectTrigger id={`disabilityType-${memberIndex}`}>
+                          <SelectValue placeholder="اختر نوع الإعاقة" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="physical">حركية</SelectItem>
+                          <SelectItem value="hearing">سمعية</SelectItem>
+                          <SelectItem value="visual">بصرية</SelectItem>
+                          <SelectItem value="mental">ذهنية</SelectItem>
+                          <SelectItem value="multiple">متعددة</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </FormField>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor={`treatmentLocation-${memberIndex}`}>مكان تلقي العلاج</Label>
-                <Controller
-                  name="treatmentLocation"
-                  control={control}
-                  render={({ field }) => (
-                    <Select
-                      onValueChange={(value) => {
-                        field.onChange(value)
-                        setShowOtherTreatmentLocation(value === "other")
-                      }}
-                      value={field.value}
-                    >
-                      <SelectTrigger id={`treatmentLocation-${memberIndex}`}>
-                        <SelectValue placeholder="اختر مكان العلاج" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="localClinic">الوحدة الصحية بالمنطقة</SelectItem>
-                        <SelectItem value="privateClinic">عيادة خاصة</SelectItem>
-                        <SelectItem value="publicHospital">مستشفى عام</SelectItem>
-                        <SelectItem value="other">أخرى</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                {errors.treatmentLocation && <p className="text-sm text-red-500">{errors.treatmentLocation.message}</p>}
+                <FormField
+                  id={`treatmentLocation-${memberIndex}`}
+                  label="مكان تلقي العلاج"
+                  error={errors.treatmentLocation?.message}
+                  required
+                >
+                  <Controller
+                    name="treatmentLocation"
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        onValueChange={(value) => {
+                          field.onChange(value)
+                          setShowOtherTreatmentLocation(value === "other")
+                        }}
+                        value={field.value}
+                      >
+                        <SelectTrigger id={`treatmentLocation-${memberIndex}`}>
+                          <SelectValue placeholder="اختر مكان العلاج" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="localClinic">الوحدة الصحية بالمنطقة</SelectItem>
+                          <SelectItem value="privateClinic">عيادة خاصة</SelectItem>
+                          <SelectItem value="publicHospital">مستشفى عام</SelectItem>
+                          <SelectItem value="other">أخرى</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </FormField>
               </div>
 
               {showOtherTreatmentLocation && (
                 <div className="space-y-2">
-                  <Label htmlFor={`otherTreatmentLocation-${memberIndex}`}>حدد مكان العلاج</Label>
-                  <Input
+                  <FormField
                     id={`otherTreatmentLocation-${memberIndex}`}
-                    className="text-right"
-                    maxLength={50}
-                    {...register("otherTreatmentLocation")}
-                  />
-                  {errors.otherTreatmentLocation && <p className="text-sm text-red-500">{errors.otherTreatmentLocation.message}</p>}
+                    label="حدد مكان العلاج"
+                    error={errors.otherTreatmentLocation?.message}
+                    required
+                  >
+                    <Input
+                      id={`otherTreatmentLocation-${memberIndex}`}
+                      className="text-right"
+                      maxLength={50}
+                      {...register("otherTreatmentLocation")}
+                    />
+                  </FormField>
                 </div>
               )}
 
               <div className="space-y-2">
-                <Label htmlFor={`medicalExpensesCoverage-${memberIndex}`}>كيف تغطي تكاليف العلاج؟</Label>
-                <Controller
-                  name="medicalExpensesCoverage"
-                  control={control}
-                  render={({ field }) => (
-                    <Select
-                      onValueChange={(value) => {
-                        field.onChange(value)
-                        setShowOtherMedicalExpensesCoverage(value === "other")
-                      }}
-                      value={field.value}
-                    >
-                      <SelectTrigger id={`medicalExpensesCoverage-${memberIndex}`}>
-                        <SelectValue placeholder="اختر طريقة تغطية التكاليف" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="family">تغطية الأسرة بالكامل</SelectItem>
-                        <SelectItem value="government">علاج على نفقة الدولة</SelectItem>
-                        <SelectItem value="insurance">تأمين صحي</SelectItem>
-                        <SelectItem value="other">أخرى</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                {errors.medicalExpensesCoverage && <p className="text-sm text-red-500">{errors.medicalExpensesCoverage.message}</p>}
+                <FormField
+                  id={`medicalExpensesCoverage-${memberIndex}`}
+                  label="كيف تغطي تكاليف العلاج؟"
+                  error={errors.medicalExpensesCoverage?.message}
+                  required
+                >
+                  <Controller
+                    name="medicalExpensesCoverage"
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        onValueChange={(value) => {
+                          field.onChange(value)
+                          setShowOtherMedicalExpensesCoverage(value === "other")
+                        }}
+                        value={field.value}
+                      >
+                        <SelectTrigger id={`medicalExpensesCoverage-${memberIndex}`}>
+                          <SelectValue placeholder="اختر طريقة تغطية التكاليف" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="family">تغطية الأسرة بالكامل</SelectItem>
+                          <SelectItem value="government">علاج على نفقة الدولة</SelectItem>
+                          <SelectItem value="insurance">تأمين صحي</SelectItem>
+                          <SelectItem value="other">أخرى</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </FormField>
               </div>
 
               {showOtherMedicalExpensesCoverage && (
                 <div className="space-y-2">
-                  <Label htmlFor={`otherMedicalExpensesCoverage-${memberIndex}`}>حدد طريقة تغطية التكاليف</Label>
-                  <Input
+                  <FormField
                     id={`otherMedicalExpensesCoverage-${memberIndex}`}
-                    className="text-right"
-                    maxLength={50}
-                    {...register("otherMedicalExpensesCoverage")}
-                  />
-                  {errors.otherMedicalExpensesCoverage && <p className="text-sm text-red-500">{errors.otherMedicalExpensesCoverage.message}</p>}
+                    label="حدد طريقة تغطية التكاليف"
+                    error={errors.otherMedicalExpensesCoverage?.message}
+                    required
+                  >
+                    <Input
+                      id={`otherMedicalExpensesCoverage-${memberIndex}`}
+                      className="text-right"
+                      maxLength={50}
+                      {...register("otherMedicalExpensesCoverage")}
+                    />
+                  </FormField>
                 </div>
               )}
 
               <div className="space-y-2">
-                <Label>المساعدة الطبية المطلوبة من المؤسسة</Label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`assistance-monthly-${memberIndex}`}
-                      {...register("requiredMedicalAssistance")}
-                      value="monthly"
-                    />
-                    <Label htmlFor={`assistance-monthly-${memberIndex}`} className="mr-2">
-                      علاج شهري
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`assistance-surgery-${memberIndex}`}
-                      {...register("requiredMedicalAssistance")}
-                      value="surgery"
-                    />
-                    <Label htmlFor={`assistance-surgery-${memberIndex}`} className="mr-2">
-                      إجراء عملية
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`assistance-wheelchair-${memberIndex}`}
-                      {...register("requiredMedicalAssistance")}
-                      value="wheelchair"
-                    />
-                    <Label htmlFor={`assistance-wheelchair-${memberIndex}`} className="mr-2">
-                      كرسي متحرك
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`assistance-tests-${memberIndex}`}
-                      {...register("requiredMedicalAssistance")}
-                      value="tests"
-                    />
-                    <Label htmlFor={`assistance-tests-${memberIndex}`} className="mr-2">
-                      أشعة وتحاليل
-                    </Label>
-                  </div>
-                </div>
-                {errors.requiredMedicalAssistance && <p className="text-sm text-red-500">{errors.requiredMedicalAssistance.message}</p>}
+                <FormField
+                  id={`requiredMedicalAssistance-${memberIndex}`}
+                  label="المساعدة الطبية المطلوبة من المؤسسة"
+                  error={errors.requiredMedicalAssistance?.message}
+                  required
+                >
+                  <Controller
+                    name="requiredMedicalAssistance"
+                    control={control}
+                    defaultValue={[]}
+                    render={({ field }) => (
+                      <div className="grid grid-cols-2 gap-4">
+                        {[
+                          { value: "monthly", label: "علاج شهري" },
+                          { value: "surgery", label: "إجراء عملية" },
+                          { value: "wheelchair", label: "كرسي متحرك" },
+                          { value: "tests", label: "أشعة وتحاليل" },
+                        ].map((assistance) => (
+                          <div key={assistance.value} className="flex items-center space-x-2">
+                            <Controller
+                              name="requiredMedicalAssistance"
+                              control={control}
+                              defaultValue={[]}
+                              render={({ field }) => (
+                                <Checkbox
+                                  id={`assistance-${assistance.value}-${memberIndex}`}
+                                  checked={field.value?.includes(assistance.value)}
+                                  onCheckedChange={(checked) => {
+                                    const updatedValue = checked === true
+                                      ? [...(field.value || []), assistance.value]
+                                      : (field.value || []).filter((value) => value !== assistance.value)
+                                    field.onChange(updatedValue)
+                                  }}
+                                />
+                              )}
+                            />
+                            <Label htmlFor={`assistance-${assistance.value}-${memberIndex}`} className="mr-2">
+                              {assistance.label}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  />
+                </FormField>
               </div>
             </>
           )}
         </div>
+      </Card>
 
-        <Button 
-          type="submit" 
-          className="w-full" 
-          disabled={isSaving || isSubmitted}
-        >
-          {isSaving ? "جاري الحفظ..." : "حفظ بيانات الفرد"}
-        </Button>
-      </form>
-    </div>
+      <Button type="submit" className="w-full" disabled={isSaving || isSubmitting}>
+        {isSaving ? (
+          <>
+            <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+            جاري الحفظ...
+          </>
+        ) : (
+          "حفظ البيانات"
+        )}
+      </Button>
+    </form>
   )
 }
 

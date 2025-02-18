@@ -1,5 +1,9 @@
-import LoginForm from "@/components/login-form"
+import EntryForm from "@/components/entry-form"
 
 export default function Home() {
-  return <LoginForm />
+  return (
+    <div>
+      <EntryForm />
+    </div>
+  )
 }

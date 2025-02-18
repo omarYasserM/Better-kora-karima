@@ -1,17 +1,22 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { Upload } from "lucide-react"
 import Image from "next/image"
+import { useRouter } from "next/navigation"
+import { BeneficiaryData, useEntryStore } from "@/lib/store"
+import { toast } from "@/components/ui/use-toast"
+import { compressImage } from "@/lib/image-utils"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useRouter } from "next/navigation"
+import { FormField } from "@/components/ui/form"
+import { ImageUpload } from "@/components/ui/image-upload"
 
 const formSchema = z.object({
   beneficiaryName: z
@@ -21,16 +26,20 @@ const formSchema = z.object({
   nationalId: z.string().length(14, "الرقم القومي يجب أن يكون 14 رقم").regex(/^\d+$/, "يجب إدخال أرقام فقط"),
   gender: z.string().min(1, "هذا الحقل مطلوب"),
   idCardImage: z
-    .any()
-    .optional()
+    .custom<File>()
+    .refine((file) => !file || file instanceof File, "يجب اختيار صورة")
     .refine(
-      (files) => !files || files instanceof FileList,
-      "Invalid file input"
+      (file) => !file || (file instanceof File && file.size <= 5 * 1024 * 1024),
+      "حجم الصورة يجب أن لا يتجاوز 5 ميجابايت"
     )
     .refine(
-      (files) => !files || files.length === 0 || files[0] instanceof File,
-      "Please upload a valid image file"
-    ),
+      (file) =>
+        !file ||
+        (file instanceof File &&
+        ["image/jpeg", "image/png"].includes(file.type)),
+      "يجب أن تكون الصورة بصيغة JPG أو PNG"
+    )
+    .optional(),
   phone1: z
     .string()
     .min(1, "هذا الحقل مطلوب")
@@ -52,6 +61,7 @@ type FormData = z.infer<typeof formSchema>
 
 export default function BeneficiaryForm() {
   const router = useRouter()
+  const { entryId, researcher, coordinator, setBeneficiary } = useEntryStore()
   const [selectedFile, setSelectedFile] = useState<string>("")
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -66,23 +76,44 @@ export default function BeneficiaryForm() {
     resolver: zodResolver(formSchema),
   })
 
-  const onSubmit = (data: FormData) => {
-    setIsSubmitting(true)
-    // Navigate to the family data page with the family size
-    router.push(`/family-data?familySize=${data.familySize}`)
-  }
+  useEffect(() => {
+    // Redirect if no entry data
+    if (!entryId || !researcher || !coordinator) {
+      router.push("/")
+    }
+  }, [entryId, researcher, coordinator, router])
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0]
-      setSelectedFile(file.name)
-      setValue("idCardImage", e.target.files)
+  const onSubmit = async (data: FormData) => {
+    try {
+      setIsSubmitting(true)
       
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string)
+      let compressedImage: File | undefined
+      if (data.idCardImage instanceof File) {
+        compressedImage = await compressImage(data.idCardImage)
       }
-      reader.readAsDataURL(file)
+
+      const beneficiaryData: BeneficiaryData = {
+        name: data.beneficiaryName,
+        nationalId: data.nationalId,
+        gender: data.gender as 'male' | 'female',
+        phone1: data.phone1,
+        phone2: data.phone2,
+        whatsapp: data.whatsapp,
+        familySize: parseInt(data.familySize),
+        idCardImage: compressedImage
+      }
+      
+      setBeneficiary(beneficiaryData)
+      router.push(`/family-data?familySize=${data.familySize}`)
+    } catch (error) {
+      console.error("Submit error:", error)
+      toast({
+        title: "خطأ",
+        description: "حدث خطأ أثناء حفظ البيانات",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -128,40 +159,20 @@ export default function BeneficiaryForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="idCardImage">رفع صورة البطاقة الشخصية</Label>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Input
-                  id="idCardImage"
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  {...register("idCardImage")}
-                  onChange={handleFileChange}
+            <Label htmlFor="idCardImage">صورة البطاقة الشخصية</Label>
+            <Controller
+              name="idCardImage"
+              control={control}
+              render={({ field: { onChange, value } }) => (
+                <ImageUpload
+                  onChange={onChange}
+                  value={value}
+                  error={errors.idCardImage?.message}
+                  maxSize={5}
+                  accept={["image/jpeg", "image/png"]}
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => document.getElementById("idCardImage")?.click()}
-                >
-                  <Upload className="ml-2 h-4 w-4" />
-                  {selectedFile || "اختر ملف"}
-                </Button>
-              </div>
-              {imagePreview && (
-                <div className="mt-2 rounded-lg border p-2">
-                  <Image 
-                    src={imagePreview}
-                    alt="Preview"
-                    width={200}
-                    height={150}
-                    className="max-h-40 rounded object-contain"
-                  />
-                </div>
               )}
-            </div>
-            {errors.idCardImage && <p className="text-sm text-red-500">{errors.idCardImage.message?.toString()}</p>}
+            />
           </div>
 
           <div className="space-y-2">

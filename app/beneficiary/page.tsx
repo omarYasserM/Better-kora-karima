@@ -1,6 +1,11 @@
 import BeneficiaryForm from "@/components/beneficiary-form"
+import { ErrorBoundary } from "@/components/error-boundary"
 
 export default function BeneficiaryPage() {
-  return <BeneficiaryForm />
+  return (
+    <ErrorBoundary>
+      <BeneficiaryForm />
+    </ErrorBoundary>
+  )
 }
 

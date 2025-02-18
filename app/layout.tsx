@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Noto_Sans_Arabic } from "next/font/google";
+import { Header } from "@/components/header"
+import { ProgressIndicator } from "@/components/progress-indicator"
+import { Providers } from "@/components/providers"
+import { ErrorBoundary } from "@/components/error-boundary"
 
 const notoArabic = Noto_Sans_Arabic({
   weight: ["400", "500", "700"],
@@ -20,7 +24,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ar" dir="rtl">
-      <body className={`${notoArabic.className} antialiased`}>{children}</body>
+      <body className={`${notoArabic.className} antialiased`}>
+        <ErrorBoundary>
+          <Providers>
+            <Header />
+            <ProgressIndicator />
+            <main className="pt-32">
+              {children}
+            </main>
+          </Providers>
+        </ErrorBoundary>
+      </body>
     </html>
   );
 }
