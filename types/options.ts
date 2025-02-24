@@ -34,4 +34,5 @@ export interface FormOptions {
   hasMarriedDaughterUnder18: Option[]
   hadCircumcision: Option[]
   circumcisionPerformer: Option[]
+  requiredMedicalAssistance: Option[]
 } 

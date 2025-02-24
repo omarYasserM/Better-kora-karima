@@ -160,6 +160,11 @@ export async function GET() {
         id: row.rowNumber.toString(),
         name: row.get("Who_performed_the_circumcision")
       })).filter(item => item.name),
+
+      requiredMedicalAssistance: rows.map(row => ({
+        id: row.rowNumber.toString(),
+        name: row.get("medical_need")
+      })).filter(item => item.name),
     }
 
     return NextResponse.json(options)
