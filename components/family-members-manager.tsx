@@ -77,7 +77,9 @@ export function FamilyMembersManager() {
         })
 
         if (!familyResponse.ok) {
-          throw new Error(await familyResponse.text())
+          const errorText = await familyResponse.text();
+          console.error('Family submission error:', errorText);
+          throw new Error(errorText);
         }
 
         toast({
@@ -85,6 +87,8 @@ export function FamilyMembersManager() {
           description: "تم حفظ بيانات جميع أفراد الأسرة",
         })
 
+        // Reset the store before navigating to success
+        useEntryStore.getState().reset()
         router.push("/success")
       }
     } catch (error) {
