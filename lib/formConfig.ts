@@ -379,6 +379,10 @@ export const formConfig = [
     validation: {
       required: true
     },
+    dependsOn: {
+      field: "hasHealthIssue",
+      value: "نعم"
+    },
     optionsKey: "treatmentLocations",
     section: "health"
   },
@@ -399,11 +403,15 @@ export const formConfig = [
   {
     id: "medicalExpensesCoverage",
     type: "select",
-    label: "ما هي التغطية الطبية التي يحصل عليها المريض؟",
+    label: "كيف تتغطى تكاليف العلاج؟",
     validation: {
       required: true
     },
-    optionsKey: "medicalExpensesCoverage",
+    dependsOn: {
+      field: "hasHealthIssue",
+      value: "نعم"
+    },
+    optionsKey: "treatmentCostsCovered",
     section: "health"
   },
   {
@@ -426,6 +434,10 @@ export const formConfig = [
     label: "ما هو احتياجك من المؤسسة؟",
     validation: {
       required: true
+    },
+    dependsOn: {
+      field: "hasHealthIssue",
+      value: "نعم"
     },
     optionsKey: "requiredMedicalAssistance",
     section: "health"

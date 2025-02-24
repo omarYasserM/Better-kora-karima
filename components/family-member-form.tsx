@@ -79,7 +79,10 @@ const formSchema = z.object({
   whereFGM: z.string().optional(),
   otherWhereFGM: z.string().optional(),
   nationalId: z.string()
-    .optional()
+    .optional(),
+  otherRequiredMedicalAssistance: z.string().optional(),
+  willingToTrain: z.string().optional(),
+  desiredTrainingField: z.string().optional(),
 }).refine(data => {
   // Validate business type if has private business
   if (data.hasPrivateBusiness === 'نعم' && !data.businessType) {
@@ -121,8 +124,16 @@ const sections = {
   }
 } as const;
 
-// Update the FormFieldConfig type to include conditional dependsOn
-type FormFieldConfig = (typeof formConfig)[number] & {
+// Base type for form fields
+type BaseFormField = {
+  id: string;
+  type: "text" | "select" | "checkbox-group";
+  label: string;
+  validation: {
+    required: boolean;
+    [key: string]: any;
+  };
+  section: keyof typeof sections;
   dependsOn?: {
     field: keyof FormData;
     value: string;
@@ -132,6 +143,9 @@ type FormFieldConfig = (typeof formConfig)[number] & {
   setOtherVisibility?: (value: boolean) => void;
   placeholder?: string;
 };
+
+// Update the FormFieldConfig type to properly handle dependencies
+type FormFieldConfig = (typeof formConfig)[number];
 
 export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMemberFormProps) {
   const { options } = useOptions()
@@ -155,68 +169,68 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
     formState: { errors, isSubmitting },
   } = form
 
-  // Update watchedFields with proper typing
-  const watchedFields = formConfig
-    .filter((field): field is FormFieldConfig & { dependsOn: NonNullable<FormFieldConfig['dependsOn']> } => 
-      'dependsOn' in field && !!field.dependsOn
-    )
-    .reduce((acc, field) => ({
-      ...acc,
-      [field.dependsOn.field]: watch(field.dependsOn.field)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    }), {} as Record<string, any>);
+  // Watch all fields that might be dependencies
+  const allWatchedFields = watch();
 
-  const renderField = (fieldConfig: FormFieldConfig) => {
-    // Check if field should be shown based on dependencies
-    if (fieldConfig.dependsOn && watchedFields[fieldConfig.dependsOn.field] !== fieldConfig.dependsOn.value) {
+  const renderField = (field: FormFieldConfig) => {
+    // Type guard for fields with dependencies
+    const hasDependency = (field: FormFieldConfig): field is FormFieldConfig & { dependsOn: { field: keyof FormData; value: string } } => {
+      return 'dependsOn' in field && field.dependsOn !== undefined;
+    };
+
+    // Type guard for fields with options
+    const hasOptions = (field: FormFieldConfig): field is FormFieldConfig & { optionsKey: keyof FormOptions } => {
+      return 'optionsKey' in field && field.optionsKey !== undefined;
+    };
+
+    // Check dependencies
+    if (hasDependency(field) && allWatchedFields[field.dependsOn.field] !== field.dependsOn.value) {
       return null;
     }
 
     const commonProps = {
-      id: `${fieldConfig.id}-${memberIndex}`,
-      label: fieldConfig.label,
-      error: errors[fieldConfig.id]?.message,
-      required: fieldConfig.validation.required
+      id: `${field.id}-${memberIndex}`,
+      label: field.label,
+      error: field.id in errors ? errors[field.id as keyof FormData]?.message : undefined,
+      required: field.validation.required
     };
 
-    switch (fieldConfig.type) {
+    switch (field.type) {
       case 'text':
         return (
           <FormField {...commonProps}>
             <Input
               id={commonProps.id}
-              {...register(fieldConfig.id)}
+              {...register(field.id as keyof FormData)}
               className="text-right"
-              maxLength={'maxLength' in fieldConfig.validation ? fieldConfig.validation.maxLength : undefined}
-              placeholder={fieldConfig.placeholder}
+              maxLength={'maxLength' in field.validation ? field.validation.maxLength : undefined}
+              placeholder={'placeholder' in field ? field.placeholder : undefined}
             />
           </FormField>
         );
 
       case 'select':
+        if (!hasOptions(field)) return null;
         return (
           <FormField {...commonProps}>
             <Controller
-              name={fieldConfig.id}
+              name={field.id as keyof FormData}
               control={control}
-              render={({ field }) => (
+              render={({ field: formField }) => (
                 <Select
                   onValueChange={(value) => {
-                    field.onChange(value)
-                    if (fieldConfig.showOther) {
-                      const setterFunction = fieldConfig.setOtherVisibility
-                      if (setterFunction) {
-                        setterFunction(value === "أخرى")
-                      }
+                    formField.onChange(value);
+                    if ('showOther' in field && 'setOtherVisibility' in field && typeof field.setOtherVisibility === 'function') {
+                      field.setOtherVisibility(value === "أخرى");
                     }
                   }}
-                  value={field.value}
+                  value={formField.value as string}
                 >
                   <SelectTrigger id={commonProps.id}>
-                    <SelectValue placeholder={`اختر ${fieldConfig.label}`} />
+                    <SelectValue placeholder={`اختر ${field.label}`} />
                   </SelectTrigger>
                   <SelectContent>
-                    {(fieldConfig.optionsKey ? options![fieldConfig.optionsKey] : fieldConfig.options)?.map((opt: { id: string; name: string }) => (
+                    {options && options[field.optionsKey]?.map((opt: { id: string; name: string }) => (
                       <SelectItem key={opt.id} value={opt.name}>
                         {opt.name}
                       </SelectItem>
@@ -229,29 +243,31 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
         );
 
       case 'checkbox-group':
+        if (!hasOptions(field)) return null;
         return (
           <FormField {...commonProps}>
             <div className="grid grid-cols-2 gap-4">
-              {options![fieldConfig.optionsKey].map((opt) => (
+              {options && options[field.optionsKey]?.map((opt: { id: string; name: string }) => (
                 <div key={opt.id} className="flex items-center space-x-2">
                   <Controller
-                    name={fieldConfig.id}
+                    name={field.id as keyof FormData}
                     control={control}
                     defaultValue={[]}
-                    render={({ field }) => (
+                    render={({ field: formField }) => (
                       <Checkbox
-                        id={`${fieldConfig.id}-${opt.id}-${memberIndex}`}
-                        checked={field.value?.includes(opt.name)}
+                        id={`${field.id}-${opt.id}-${memberIndex}`}
+                        checked={Array.isArray(formField.value) && formField.value.includes(opt.name)}
                         onCheckedChange={(checked) => {
+                          const currentValue = Array.isArray(formField.value) ? formField.value : [];
                           const updatedValue = checked
-                            ? [...(field.value || []), opt.name]
-                            : (field.value || []).filter((value: string) => value !== opt.name)
-                          field.onChange(updatedValue)
+                            ? [...currentValue, opt.name]
+                            : currentValue.filter((value: string) => value !== opt.name);
+                          formField.onChange(updatedValue);
                         }}
                       />
                     )}
                   />
-                  <Label htmlFor={`${fieldConfig.id}-${opt.id}-${memberIndex}`} className="mr-2">
+                  <Label htmlFor={`${field.id}-${opt.id}-${memberIndex}`} className="mr-2">
                     {opt.name}
                   </Label>
                 </div>
