@@ -124,26 +124,6 @@ const sections = {
   }
 } as const;
 
-// Base type for form fields
-type BaseFormField = {
-  id: string;
-  type: "text" | "select" | "checkbox-group";
-  label: string;
-  validation: {
-    required: boolean;
-    [key: string]: any;
-  };
-  section: keyof typeof sections;
-  dependsOn?: {
-    field: keyof FormData;
-    value: string;
-  };
-  optionsKey?: keyof FormOptions;
-  showOther?: boolean;
-  setOtherVisibility?: (value: boolean) => void;
-  placeholder?: string;
-};
-
 // Update the FormFieldConfig type to properly handle dependencies
 type FormFieldConfig = (typeof formConfig)[number];
 
