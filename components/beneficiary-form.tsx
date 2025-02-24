@@ -158,7 +158,7 @@ export default function BeneficiaryForm() {
             {errors.gender && <p className="text-sm text-red-500">{errors.gender.message}</p>}
           </div>
 
-          <div className="space-y-2">
+          {/* <div className="space-y-2">
             <Label htmlFor="idCardImage">صورة البطاقة الشخصية</Label>
             <Controller
               name="idCardImage"
@@ -172,7 +172,7 @@ export default function BeneficiaryForm() {
                 />
               )}
             />
-          </div>
+          </div> */}
 
           <div className="space-y-2">
             <Label htmlFor="familySize">عدد أفراد الأسرة</Label>

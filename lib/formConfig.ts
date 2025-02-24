@@ -78,7 +78,7 @@ export const formConfig = [
   {
     id: "hasMarriedDaughterUnder18",
     type: "select",
-    label: "هل لديك ابنة زوجتك تبلغ من العمر 18 عاماً؟",
+    label: "هل لديك ابنة متزوجة لديها 18 عام؟",
     validation: {
       required: true
     },

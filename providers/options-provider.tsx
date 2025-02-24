@@ -32,6 +32,7 @@ export function OptionsProvider({
   isLoading,
   error = null
 }: OptionsProviderProps) {
+  console.log(options)
   return (
     <OptionsContext.Provider value={{ options, isLoading, error }}>
       {children}

@@ -148,7 +148,7 @@ export async function GET() {
       
       hasMarriedDaughterUnder18: rows.map(row => ({
         id: row.rowNumber.toString(),
-        name: row.get("hav_ a_married_daughter_under_18")
+        name: row.get("has_a_married_daughter_under_18")
       })).filter(item => item.name),
       
       hadCircumcision: rows.map(row => ({
