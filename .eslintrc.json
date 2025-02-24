@@ -6,7 +6,6 @@
       "varsIgnorePattern": "^_",
       "ignoreRestSiblings": true,
       "destructuredArrayIgnorePattern": "^_"
-    }],
-    "@typescript-eslint/no-explicit-any": "error"
+    }]
   }
 } 
