@@ -84,7 +84,7 @@ export const formConfig = [
     },
     dependsOn: {
       field: "maritalStatus",
-      value: "متزوج"
+      antiValue: "أعزب /عزباء"
     },
     optionsKey: "hasMarriedDaughterUnder18",
     section: "basic"
@@ -331,7 +331,7 @@ export const formConfig = [
   },
   {
     id: "healthIssueType",
-    type: "select",
+    type: "checkbox-group",
     label: "ما هو المرض المزمن أو الإعاقة أو المرض النفسي؟",
     validation: {
       required: true

@@ -30,7 +30,6 @@ export interface FamilyMember {
   maritalStatus: string
   hasNationalId: string
   nationalId?: string
-  wentToSchool: string
   reasonForNotAttending?: string
   lastEducationalStage?: string
   isCurrentlyEnrolled?: string

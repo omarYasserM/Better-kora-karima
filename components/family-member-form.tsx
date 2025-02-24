@@ -38,7 +38,6 @@ const formSchema = z.object({
   maritalStatus: z.string().min(1, validationMessages.required),
   hasNationalId: z.string().min(1, validationMessages.required),
   hasAttendedSchool: z.string().min(1, validationMessages.required),
-  wentToSchool: z.string().min(1, validationMessages.required),
   canReadAndWrite: z.string().min(1, validationMessages.required),
   isWorking: z.string().min(1, validationMessages.required),
   hasHealthIssue: z.string().min(1, validationMessages.required),
@@ -83,16 +82,7 @@ const formSchema = z.object({
   otherRequiredMedicalAssistance: z.string().optional(),
   willingToTrain: z.string().optional(),
   desiredTrainingField: z.string().optional(),
-}).refine(data => {
-  // Validate business type if has private business
-  if (data.hasPrivateBusiness === 'نعم' && !data.businessType) {
-    return false;
-  }
-  return true;
-}, {
-  message: "نوع المشروع مطلوب عند اختيار 'نعم' في وجود مشروع خاص",
-  path: ["businessType"]
-});
+})
 
 type FormData = z.infer<typeof formSchema>
 
@@ -154,7 +144,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
 
   const renderField = (field: FormFieldConfig) => {
     // Type guard for fields with dependencies
-    const hasDependency = (field: FormFieldConfig): field is FormFieldConfig & { dependsOn: { field: keyof FormData; value: string } } => {
+    const hasDependency = (field: FormFieldConfig): field is FormFieldConfig & { dependsOn: { field: keyof FormData; value?: string; antiValue?: string } } => {
       return 'dependsOn' in field && field.dependsOn !== undefined;
     };
 
@@ -164,8 +154,23 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
     };
 
     // Check dependencies
-    if (hasDependency(field) && allWatchedFields[field.dependsOn.field] !== field.dependsOn.value) {
-      return null;
+    if (hasDependency(field)) {
+      const dependentValue = allWatchedFields[field.dependsOn.field];
+      
+      let shouldShow = true;
+      if (field.dependsOn.value !== undefined) {
+        shouldShow = Array.isArray(dependentValue)
+          ? dependentValue.includes(field.dependsOn.value)
+          : dependentValue === field.dependsOn.value;
+      } else if (field.dependsOn.antiValue !== undefined) {
+        shouldShow = Array.isArray(dependentValue)
+          ? !dependentValue.includes(field.dependsOn.antiValue)
+          : dependentValue !== field.dependsOn.antiValue;
+      }
+      
+      if (!shouldShow) {
+        return null;
+      }
     }
 
     const commonProps = {
@@ -313,7 +318,9 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
   }
 
   return (
-    <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+    <form onSubmit={handleSubmit(handleFormSubmit, (errors) => {
+      console.log(errors)
+    })} className="space-y-6">
       <Card className="p-6">
         <h2 className="mb-4 text-xl font-semibold">
           {isFirst ? "بيانات رب الأسرة" : `بيانات الفرد ${memberIndex + 1}`}
