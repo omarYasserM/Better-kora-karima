@@ -115,6 +115,7 @@ export function FamilyMembersManager() {
 
         <Card className="p-6">
           <FamilyMemberForm
+            key={currentMemberIndex}
             memberIndex={currentMemberIndex}
             onSubmit={handleMemberSubmit}
             isFirst={currentMemberIndex === 0}

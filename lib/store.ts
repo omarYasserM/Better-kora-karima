@@ -25,7 +25,7 @@ export interface BeneficiaryData {
 export interface FamilyMember {
   name: string
   kinshipRelation: string
-  gender: 'male' | 'female'
+  gender: string
   ageGroup: string
   maritalStatus: string
   hasNationalId: string

@@ -8,6 +8,11 @@ export function useFormPersistence<T extends FieldValues>(
   key: string,
   enabled: boolean = true
 ) {
+  const clearPersistedData = () => {
+    localStorage.removeItem(key)
+    form.reset({} as T)
+  }
+
   useEffect(() => {
     if (!enabled) return
 
@@ -34,4 +39,6 @@ export function useFormPersistence<T extends FieldValues>(
       }
     }
   }, [form, key, enabled])
+
+  return { clearPersistedData }
 } 
