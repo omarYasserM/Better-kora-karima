@@ -9,7 +9,6 @@ import { FormError } from "@/components/ui/form-error"
 
 interface ImageUploadProps {
   onChange: (file?: File) => void
-  value?: File
   error?: string
   maxSize?: number // in MB
   accept?: string[]
@@ -17,7 +16,6 @@ interface ImageUploadProps {
 
 export function ImageUpload({
   onChange,
-  value,
   error,
   maxSize = 5, // Default 5MB
   accept = ["image/jpeg", "image/png"]

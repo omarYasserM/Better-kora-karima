@@ -10,69 +10,13 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "@/components/ui/use-toast"
-import { FamilyMember, useEntryStore } from "@/lib/store"
+import { FamilyMember } from "@/lib/store"
 import { Card } from "@/components/ui/card"
 import { useFormPersistence } from "@/hooks/use-form-persistence"
 import { FormField } from "@/components/ui/form-field"
 import { Loader2 } from "lucide-react"
+import { useOptions } from "@/providers/options-provider"
 
-// Educational stages
-const educationalStages = [
-  { value: "primary", label: "المرحلة الابتدائية" },
-  { value: "preparatory", label: "المرحلة الإعدادية" },
-  { value: "secondary", label: "المرحلة الثانوية" },
-  { value: "university", label: "المرحلة الجامعية" },
-]
-
-// Job types
-const jobTypes = [
-  { value: "daily", label: "عامل باليومية" },
-  { value: "driver", label: "سائق" },
-  { value: "employee", label: "موظف" },
-  { value: "nurse", label: "ممرض" },
-]
-
-// Business types
-const businessTypes = [
-  { value: "tuktuk", label: "توك توك" },
-  { value: "livestock", label: "تربية مواشي" },
-  { value: "grocery", label: "بقالة" },
-  { value: "sewing", label: "خياطة" },
-  { value: "workshop", label: "ورشة" },
-  { value: "fishing", label: "صيد" },
-  { value: "farming", label: "زراعة" },
-  { value: "other", label: "أخرى" },
-]
-
-// Skills
-const skillTypes = [
-  { value: "sewing", label: "خياطة" },
-  { value: "carpentry", label: "نجارة" },
-  { value: "plumbing", label: "سباكة" },
-  { value: "programming", label: "برمجة" },
-  { value: "handicrafts", label: "مشغولات يدوية" },
-  { value: "other", label: "أخرى" },
-]
-
-// Training fields
-const trainingFields = [
-  { value: "metalwork", label: "حدادة" },
-  { value: "plumbing", label: "سباكة" },
-  { value: "programming", label: "برمجة" },
-  { value: "handicrafts", label: "مشغولات يدوية" },
-  { value: "other", label: "أخرى" },
-]
-
-// Chronic diseases
-const chronicDiseases = [
-  { value: "pressure", label: "الضغط" },
-  { value: "diabetes", label: "السكر" },
-  { value: "hepatitisC", label: "فيروس C" },
-  { value: "kidney", label: "فشل كلوي" },
-  { value: "heart", label: "أمراض قلب" },
-  { value: "cancer", label: "سرطان" },
-  { value: "other", label: "أخرى" },
-]
 
 const validationMessages = {
   required: "هذا الحقل مطلوب",
@@ -99,7 +43,7 @@ const formSchema = z.object({
   hasHealthIssue: z.string().min(1, validationMessages.required),
 
   // All conditional fields made simply optional
- 
+
   reasonForNotAttending: z.string().optional(),
   lastEducationalStage: z.string().optional(),
   isCurrentlyEnrolled: z.string().optional(),
@@ -132,6 +76,8 @@ const formSchema = z.object({
   hasFGM: z.string().optional(),
   whereFGM: z.string().optional(),
   otherWhereFGM: z.string().optional(),
+  nationalId: z.string()
+    .optional()
 }).refine(data => {
   // Validate business type if has private business
   if (data.hasPrivateBusiness === 'yes' && !data.businessType) {
@@ -152,13 +98,15 @@ interface FamilyMemberFormProps {
 }
 
 export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMemberFormProps) {
-  const [showOtherBusinessType, setShowOtherBusinessType] = useState(false)
+  const { options } = useOptions()
   const [showOtherSkillType, setShowOtherSkillType] = useState(false)
   const [showOtherTrainingField, setShowOtherTrainingField] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [showOtherChronicDisease, setShowOtherChronicDisease] = useState(false)
   const [showOtherTreatmentLocation, setShowOtherTreatmentLocation] = useState(false)
   const [showOtherMedicalExpensesCoverage, setShowOtherMedicalExpensesCoverage] = useState(false)
+
+
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -182,7 +130,6 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
   const watchWentToSchool = watch("wentToSchool")
   const watchIsCurrentlyEnrolled = watch("isCurrentlyEnrolled")
   const watchIsWorking = watch("isWorking")
-  const watchHasPrivateBusiness = watch("hasPrivateBusiness")
   const watchHasUnusedSkill = watch("hasUnusedSkill")
   const watchWantsTraining = watch("wantsTraining")
   const watchHasHealthIssue = watch("hasHealthIssue")
@@ -191,18 +138,18 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
   const handleFormSubmit = async (data: FormData) => {
     try {
       setIsSaving(true)
-      
+
       const familyMemberData: FamilyMember = {
         ...data,
         healthIssueType: data.healthIssueType || [],
         chronicDiseases: data.chronicDiseases || [],
-        requiredMedicalAssistance: Array.isArray(data.requiredMedicalAssistance) 
-          ? data.requiredMedicalAssistance.join(",") 
+        requiredMedicalAssistance: Array.isArray(data.requiredMedicalAssistance)
+          ? data.requiredMedicalAssistance.join(",")
           : data.requiredMedicalAssistance
       }
-      
+
       await onSubmit(familyMemberData)
-      
+
       toast({
         title: "تم الحفظ",
         description: `تم حفظ بيانات الفرد ${memberIndex + 1} بنجاح`,
@@ -220,28 +167,12 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
     }
   }
 
-  const submitFamilyMember = async (data: FamilyMember) => {
-    try {
-      const response = await fetch('/api/submit-family', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entryId: useEntryStore.getState().entryId,
-          familyMember: data
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to submit family member')
-      }
-    } catch (error) {
-      console.error('Submission error:', error)
-      throw error
-    }
+  if (!options) {
+    return null // or return a loading state
   }
 
   return (
-    <form onSubmit={handleSubmit(handleFormSubmit,(data)=> console.log(data))} className="space-y-6">
+    <form onSubmit={handleSubmit(handleFormSubmit, (data) => console.log(data))} className="space-y-6">
       <Card className="p-6">
         <h2 className="mb-4 text-xl font-semibold">
           {isFirst ? "بيانات رب الأسرة" : `بيانات الفرد ${memberIndex + 1}`}
@@ -278,11 +209,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                       <SelectValue placeholder="اختر صلة القرابة" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="self">رب/ة الأسرة</SelectItem>
-                      <SelectItem value="spouse">زوج/زوجة</SelectItem>
-                      <SelectItem value="son">ابن/ابنة</SelectItem>
-                      <SelectItem value="parent">والد/والدة</SelectItem>
-                      <SelectItem value="sibling">أخ/أخت</SelectItem>
+                      {options!.relationship.map((rel) => (
+                        <SelectItem key={rel.id} value={rel.id}>
+                          {rel.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
@@ -306,8 +237,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                       <SelectValue placeholder="اختر النوع" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="male">ذكر</SelectItem>
-                      <SelectItem value="female">أنثى</SelectItem>
+                      {options!.gender.map((g) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {g.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
@@ -331,10 +265,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                       <SelectValue placeholder="اختر الفئة العمرية" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="under18">أقل من 18</SelectItem>
-                      <SelectItem value="18-30">18-30</SelectItem>
-                      <SelectItem value="31-50">31-50</SelectItem>
-                      <SelectItem value="above50">فوق 50</SelectItem>
+                      {options!.age.map((age) => (
+                        <SelectItem key={age.id} value={age.id}>
+                          {age.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
@@ -358,10 +293,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                       <SelectValue placeholder="اختر الحالة الاجتماعية" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="single">أعزب/عزباء</SelectItem>
-                      <SelectItem value="married">متزوج/ة</SelectItem>
-                      <SelectItem value="divorced">مطلق/ة</SelectItem>
-                      <SelectItem value="widowed">أرمل/ة</SelectItem>
+                      {options!.maritalStatus.map((status) => (
+                        <SelectItem key={status.id} value={status.id}>
+                          {status.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
@@ -385,8 +321,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                       <SelectValue placeholder="اختر" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="yes">نعم</SelectItem>
-                      <SelectItem value="no">لا</SelectItem>
+                      {options!.hasId.map((opt) => (
+                        <SelectItem key={opt.id} value={opt.id}>
+                          {opt.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
@@ -402,10 +341,10 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                 error={errors.nationalId?.message}
                 required
               >
-                <Input 
-                  id={`nationalId-${memberIndex}`} 
-                  {...register("nationalId")} 
-                  className="text-right" 
+                <Input
+                  id={`nationalId-${memberIndex}`}
+                  {...register("nationalId")}
+                  className="text-right"
                   maxLength={14}
                   placeholder="14 رقم"
                 />
@@ -434,8 +373,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                       <SelectValue placeholder="اختر" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="yes">نعم</SelectItem>
-                      <SelectItem value="no">لا</SelectItem>
+                      {options!.hasBeenToSchool.map((opt) => (
+                        <SelectItem key={opt.id} value={opt.id}>
+                          {opt.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
@@ -514,9 +456,9 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                         <SelectValue placeholder="اختر المرحلة التعليمية" />
                       </SelectTrigger>
                       <SelectContent>
-                        {educationalStages.map((stage) => (
-                          <SelectItem key={stage.value} value={stage.value}>
-                            {stage.label}
+                        {options!.educationLevel.map((level) => (
+                          <SelectItem key={level.id} value={level.id}>
+                            {level.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -543,8 +485,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                       <SelectValue placeholder="اختر" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="yes">نعم</SelectItem>
-                      <SelectItem value="no">لا</SelectItem>
+                      {options!.regularityInStudy.map((opt) => (
+                        <SelectItem key={opt.id} value={opt.id}>
+                          {opt.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
@@ -654,8 +599,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                       <SelectValue placeholder="اختر" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="yes">نعم</SelectItem>
-                      <SelectItem value="no">لا</SelectItem>
+                      {options!.doesWork.map((opt) => (
+                        <SelectItem key={opt.id} value={opt.id}>
+                          {opt.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
@@ -681,9 +629,9 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                           <SelectValue placeholder="اختر نوع العمل" />
                         </SelectTrigger>
                         <SelectContent>
-                          {jobTypes.map((job) => (
-                            <SelectItem key={job.value} value={job.value}>
-                              {job.label}
+                          {options!.typeOfWork.map((type) => (
+                            <SelectItem key={type.id} value={type.id}>
+                              {type.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -709,9 +657,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                           <SelectValue placeholder="اختر القطاع" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="government">حكومي</SelectItem>
-                          <SelectItem value="private">خاص</SelectItem>
-                          <SelectItem value="daily">عامل يومية</SelectItem>
+                          {options!.sector.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     )}
@@ -735,10 +685,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                           <SelectValue placeholder="اختر طبيعة العمل" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="fullTime">دوام كامل</SelectItem>
-                          <SelectItem value="partTime">دوام جزئي</SelectItem>
-                          <SelectItem value="contract">عقد</SelectItem>
-                          <SelectItem value="freelance">عمل حر</SelectItem>
+                          {options!.workNature.map((nature) => (
+                            <SelectItem key={nature.id} value={nature.id}>
+                              {nature.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     )}
@@ -793,70 +744,17 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                       <SelectValue placeholder="اختر" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="yes">نعم</SelectItem>
-                      <SelectItem value="no">لا</SelectItem>
+                      {options!.hasPrivateProject.map((opt) => (
+                        <SelectItem key={opt.id} value={opt.id}>
+                          {opt.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
               />
             </FormField>
           </div>
-
-          {watchHasPrivateBusiness === "yes" && (
-            <>
-              <div className="space-y-2">
-                <FormField
-                  id={`businessType-${memberIndex}`}
-                  label="ما هو المشروع؟"
-                  error={errors.businessType?.message}
-                  required
-                >
-                  <Controller
-                    name="businessType"
-                    control={control}
-                    render={({ field }) => (
-                      <Select
-                        onValueChange={(value) => {
-                          field.onChange(value)
-                          setShowOtherBusinessType(value === "other")
-                        }}
-                        value={field.value}
-                      >
-                        <SelectTrigger id={`businessType-${memberIndex}`}>
-                          <SelectValue placeholder="اختر نوع المشروع" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {businessTypes.map((type) => (
-                            <SelectItem key={type.value} value={type.value}>
-                              {type.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                </FormField>
-              </div>
-
-              {showOtherBusinessType && (
-                <div className="space-y-2">
-                  <FormField
-                    id={`otherBusinessType-${memberIndex}`}
-                    label="اذكر نوع المشروع"
-                    error={errors.otherBusinessType?.message}
-                    required
-                  >
-                    <Input
-                      id={`otherBusinessType-${memberIndex}`}
-                      className="text-right"
-                      maxLength={50}
-                      {...register("otherBusinessType")}
-                    />
-                  </FormField>
-                </div>
-              )}
-            </>
-          )}
 
           <div className="space-y-2">
             <FormField
@@ -874,8 +772,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                       <SelectValue placeholder="اختر" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="yes">نعم</SelectItem>
-                      <SelectItem value="no">لا</SelectItem>
+                      {options!.hasUnusedSkill.map((opt) => (
+                        <SelectItem key={opt.id} value={opt.id}>
+                          {opt.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
@@ -899,7 +800,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                       <Select
                         onValueChange={(value) => {
                           field.onChange(value)
-                          setShowOtherSkillType(value === "other")
+                          setShowOtherSkillType(value === "أخرى")
                         }}
                         value={field.value}
                       >
@@ -907,9 +808,9 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                           <SelectValue placeholder="اختر نوع المهارة" />
                         </SelectTrigger>
                         <SelectContent>
-                          {skillTypes.map((type) => (
-                            <SelectItem key={type.value} value={type.value}>
-                              {type.label}
+                          {options!.unusedSkillType.map((skill) => (
+                            <SelectItem key={skill.id} value={skill.id}>
+                              {skill.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -955,8 +856,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                       <SelectValue placeholder="اختر" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="yes">نعم</SelectItem>
-                      <SelectItem value="no">لا</SelectItem>
+                      {options!.willingToTrain.map((opt) => (
+                        <SelectItem key={opt.id} value={opt.id}>
+                          {opt.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
@@ -980,7 +884,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                       <Select
                         onValueChange={(value) => {
                           field.onChange(value)
-                          setShowOtherTrainingField(value === "other")
+                          setShowOtherTrainingField(value === "أخرى")
                         }}
                         value={field.value}
                       >
@@ -988,9 +892,9 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                           <SelectValue placeholder="اختر مجال التدريب" />
                         </SelectTrigger>
                         <SelectContent>
-                          {trainingFields.map((field) => (
-                            <SelectItem key={field.value} value={field.value}>
-                              {field.label}
+                          {options!.desiredTrainingField.map((field) => (
+                            <SelectItem key={field.id} value={field.id}>
+                              {field.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1041,8 +945,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                       <SelectValue placeholder="اختر" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="yes">نعم</SelectItem>
-                      <SelectItem value="no">لا</SelectItem>
+                      {options!.hasChronicIllnessOrDisability.map((opt) => (
+                        <SelectItem key={opt.id} value={opt.id}>
+                          {opt.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 )}
@@ -1060,30 +967,30 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                   required
                 >
                   <div className="grid grid-cols-2 gap-4">
-                    {chronicDiseases.map((disease) => (
-                      <div key={disease.value} className="flex items-center space-x-2">
+                    {options!.chronicIllnessTypes.map((disease) => (
+                      <div key={disease.id} className="flex items-center space-x-2">
                         <Controller
                           name="chronicDiseases"
                           control={control}
                           defaultValue={[]}
                           render={({ field }) => (
                             <Checkbox
-                              id={`disease-${disease.value}-${memberIndex}`}
-                              checked={field.value?.includes(disease.value)}
+                              id={`disease-${disease.id}-${memberIndex}`}
+                              checked={field.value?.includes(disease.id)}
                               onCheckedChange={(checked) => {
                                 const updatedValue = checked === true
-                                  ? [...(field.value || []), disease.value]
-                                  : (field.value || []).filter((value) => value !== disease.value)
+                                  ? [...(field.value || []), disease.id]
+                                  : (field.value || []).filter((value) => value !== disease.id)
                                 field.onChange(updatedValue)
-                                if (disease.value === "other") {
+                                if (disease.name === "أخرى") {
                                   setShowOtherChronicDisease(checked === true)
                                 }
                               }}
                             />
                           )}
                         />
-                        <Label htmlFor={`disease-${disease.value}-${memberIndex}`} className="mr-2">
-                          {disease.label}
+                        <Label htmlFor={`disease-${disease.id}-${memberIndex}`} className="mr-2">
+                          {disease.name}
                         </Label>
                       </div>
                     ))}
@@ -1125,11 +1032,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                           <SelectValue placeholder="اختر نوع الإعاقة" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="physical">حركية</SelectItem>
-                          <SelectItem value="hearing">سمعية</SelectItem>
-                          <SelectItem value="visual">بصرية</SelectItem>
-                          <SelectItem value="mental">ذهنية</SelectItem>
-                          <SelectItem value="multiple">متعددة</SelectItem>
+                          {options!.disabilityTypes.map((type) => (
+                            <SelectItem key={type.id} value={type.id}>
+                              {type.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     )}
@@ -1151,7 +1058,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                       <Select
                         onValueChange={(value) => {
                           field.onChange(value)
-                          setShowOtherTreatmentLocation(value === "other")
+                          setShowOtherTreatmentLocation(value === "أخرى")
                         }}
                         value={field.value}
                       >
@@ -1159,10 +1066,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                           <SelectValue placeholder="اختر مكان العلاج" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="localClinic">الوحدة الصحية بالمنطقة</SelectItem>
-                          <SelectItem value="privateClinic">عيادة خاصة</SelectItem>
-                          <SelectItem value="publicHospital">مستشفى عام</SelectItem>
-                          <SelectItem value="other">أخرى</SelectItem>
+                          {options!.treatmentLocations.map((location) => (
+                            <SelectItem key={location.id} value={location.id}>
+                              {location.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     )}
@@ -1202,7 +1110,7 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                       <Select
                         onValueChange={(value) => {
                           field.onChange(value)
-                          setShowOtherMedicalExpensesCoverage(value === "other")
+                          setShowOtherMedicalExpensesCoverage(value === "أخرى")
                         }}
                         value={field.value}
                       >
@@ -1210,10 +1118,11 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                           <SelectValue placeholder="اختر طريقة تغطية التكاليف" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="family">تغطية الأسرة بالكامل</SelectItem>
-                          <SelectItem value="government">علاج على نفقة الدولة</SelectItem>
-                          <SelectItem value="insurance">تأمين صحي</SelectItem>
-                          <SelectItem value="other">أخرى</SelectItem>
+                          {options!.treatmentCostsCovered.map((coverage) => (
+                            <SelectItem key={coverage.id} value={coverage.id}>
+                              {coverage.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     )}
@@ -1259,22 +1168,15 @@ export function FamilyMemberForm({ memberIndex, onSubmit, isFirst }: FamilyMembe
                           { value: "tests", label: "أشعة وتحاليل" },
                         ].map((assistance) => (
                           <div key={assistance.value} className="flex items-center space-x-2">
-                            <Controller
-                              name="requiredMedicalAssistance"
-                              control={control}
-                              defaultValue={[]}
-                              render={({ field }) => (
-                                <Checkbox
-                                  id={`assistance-${assistance.value}-${memberIndex}`}
-                                  checked={field.value?.includes(assistance.value)}
-                                  onCheckedChange={(checked) => {
-                                    const updatedValue = checked === true
-                                      ? [...(field.value || []), assistance.value]
-                                      : (field.value || []).filter((value) => value !== assistance.value)
-                                    field.onChange(updatedValue)
-                                  }}
-                                />
-                              )}
+                            <Checkbox
+                              id={`assistance-${assistance.value}-${memberIndex}`}
+                              checked={field.value?.includes(assistance.value)}
+                              onCheckedChange={(checked) => {
+                                const updatedValue = checked === true
+                                  ? [...(field.value || []), assistance.value]
+                                  : (field.value || []).filter((value) => value !== assistance.value)
+                                field.onChange(updatedValue)
+                              }}
                             />
                             <Label htmlFor={`assistance-${assistance.value}-${memberIndex}`} className="mr-2">
                               {assistance.label}

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { doc } from "@/lib/google-sheets"
-import type { RowData, FamilyMemberRow } from "@/types/sheets"
+import type { FamilyMemberRow } from "@/types/sheets"
 
 export async function POST(req: Request) {
   try {

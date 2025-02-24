@@ -4,19 +4,16 @@ import { useState, useEffect } from "react"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
-import { Upload } from "lucide-react"
-import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { BeneficiaryData, useEntryStore } from "@/lib/store"
 import { toast } from "@/components/ui/use-toast"
 import { compressImage } from "@/lib/image-utils"
-
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { FormField } from "@/components/ui/form"
 import { ImageUpload } from "@/components/ui/image-upload"
+import { useOptions } from "@/providers/options-provider"
 
 const formSchema = z.object({
   beneficiaryName: z
@@ -61,9 +58,9 @@ type FormData = z.infer<typeof formSchema>
 
 export default function BeneficiaryForm() {
   const router = useRouter()
+  const { options} = useOptions()
+  const { gender } = options!
   const { entryId, researcher, coordinator, setBeneficiary } = useEntryStore()
-  const [selectedFile, setSelectedFile] = useState<string>("")
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const {
@@ -71,7 +68,6 @@ export default function BeneficiaryForm() {
     control,
     handleSubmit,
     formState: { errors },
-    setValue,
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
   })
@@ -95,7 +91,7 @@ export default function BeneficiaryForm() {
       const beneficiaryData: BeneficiaryData = {
         name: data.beneficiaryName,
         nationalId: data.nationalId,
-        gender: data.gender as 'male' | 'female',
+        gender: gender.find(g => g.id === data.gender)?.name || "",
         phone1: data.phone1,
         phone2: data.phone2,
         whatsapp: data.whatsapp,
@@ -116,6 +112,7 @@ export default function BeneficiaryForm() {
       setIsSubmitting(false)
     }
   }
+
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 pt-28 md:p-6 md:pt-28" dir="rtl">
@@ -149,8 +146,11 @@ export default function BeneficiaryForm() {
                     <SelectValue placeholder="اختر النوع" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="male">ذكر</SelectItem>
-                    <SelectItem value="female">أنثى</SelectItem>
+                    {gender.map((g) => (
+                      <SelectItem key={g.id} value={g.id}>
+                        {g.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               )}
@@ -163,10 +163,9 @@ export default function BeneficiaryForm() {
             <Controller
               name="idCardImage"
               control={control}
-              render={({ field: { onChange, value } }) => (
+              render={({ field: { onChange } }) => (
                 <ImageUpload
                   onChange={onChange}
-                  value={value}
                   error={errors.idCardImage?.message}
                   maxSize={5}
                   accept={["image/jpeg", "image/png"]}

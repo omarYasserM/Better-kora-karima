@@ -8,7 +8,8 @@ export async function fetchResearchers(): Promise<Researcher[]> {
     if (!sheet) throw new Error("Researchers sheet not found")
     
     await sheet.loadHeaderRow()
-    const rows = await sheet.getRows()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = await sheet.getRows() as any[]
     
     return rows.map(row => ({
       id: row.rowNumber.toString(),
@@ -20,6 +21,7 @@ export async function fetchResearchers(): Promise<Researcher[]> {
   }
 }
 
+
 export async function fetchCoordinators(): Promise<Coordinator[]> {
   try {
     await doc.loadInfo()
@@ -27,7 +29,8 @@ export async function fetchCoordinators(): Promise<Coordinator[]> {
     if (!sheet) throw new Error("Coordinators sheet not found")
     
     await sheet.loadHeaderRow()
-    const rows = await sheet.getRows()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = await sheet.getRows() as any[]
     
     return rows.map(row => ({
       id: row.rowNumber.toString(),
@@ -39,7 +42,7 @@ export async function fetchCoordinators(): Promise<Coordinator[]> {
   }
 }
 
-// This should only be used in server-side code
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function addBeneficiaryToSheet(data: any) {
   await doc.loadInfo()
   const sheet = doc.sheetsByTitle["Beneficiaries"]

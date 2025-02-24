@@ -1,13 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect} from "react"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { useRouter } from "next/navigation"
 import { Calendar } from "lucide-react"
-import { Researcher, Coordinator } from "@/lib/store"
-
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
@@ -15,8 +13,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar as CalendarComponent } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
 import { useEntryStore } from "@/lib/store"
-import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { useProgressStore } from "@/lib/progress-store"
+import { useOptions } from "@/providers/options-provider"
 
 const formSchema = z.object({
   researcher: z.string().min(1, "يجب اختيار الباحث"),
@@ -30,9 +28,8 @@ type FormData = z.infer<typeof formSchema>
 
 export default function EntryForm() {
   const router = useRouter()
-  const [isLoading, setIsLoading] = useState(true)
-  const [researchers, setResearchers] = useState<Researcher[]>([])
-  const [coordinators, setCoordinators] = useState<Coordinator[]>([])
+  const { options} = useOptions()
+  const { researchers, coordinators } = options!
   const setInitialEntry = useEntryStore(state => state.setInitialEntry)
   const setCurrentStep = useProgressStore(state => state.setCurrentStep)
   const addCompletedStep = useProgressStore(state => state.addCompletedStep)
@@ -46,29 +43,11 @@ export default function EntryForm() {
   })
 
   useEffect(() => {
-    const loadOptions = async () => {
-      try {
-        const response = await fetch('/api/fetch-options')
-        if (!response.ok) throw new Error("Failed to fetch options")
-        
-        const { researchers, coordinators } = await response.json()
-        setResearchers(researchers)
-        setCoordinators(coordinators)
-      } catch (error) {
-        console.error("Failed to load options:", error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadOptions()
-  }, [])
-
-  useEffect(() => {
     setCurrentStep('entry')
   }, [setCurrentStep])
 
   const onSubmit = (data: FormData) => {
+    
     const researcher = researchers.find(r => r.id === data.researcher)
     const coordinator = coordinators.find(c => c.id === data.coordinator)
     
@@ -77,10 +56,6 @@ export default function EntryForm() {
     setInitialEntry(researcher, coordinator, data.visitDate)
     addCompletedStep('entry')
     router.push("/beneficiary")
-  }
-
-  if (isLoading) {
-    return <LoadingSpinner />
   }
 
   return (

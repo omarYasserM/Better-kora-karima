@@ -14,7 +14,7 @@ export interface Coordinator {
 export interface BeneficiaryData {
   name: string
   nationalId: string
-  gender: 'male' | 'female'
+  gender: string
   phone1: string
   phone2?: string
   whatsapp?: string

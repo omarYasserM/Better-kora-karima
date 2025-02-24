@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
-import { writeFile } from "fs/promises"
-import { join } from "path"
+// import { writeFile } from "fs/promises"
+// import { join } from "path"
 import { doc } from "@/lib/google-sheets"
-import { RowData } from "@/types/sheets"
+// import { RowData } from "@/types/sheets"
 
 export async function POST(req: Request) {
   try {
@@ -10,8 +10,8 @@ export async function POST(req: Request) {
     const entries = Object.fromEntries(formData.entries())
     
     // Handle image upload
-    const image = entries.idCardImage as File
-    let imageUrl = ''
+    // const image = entries.idCardImage as File
+    const imageUrl = ''
     
     // if (image && image.size > 0) {
     //   const bytes = await image.arrayBuffer()

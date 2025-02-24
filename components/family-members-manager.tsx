@@ -9,11 +9,6 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { FamilyMemberForm } from "@/components/family-member-form"
 import { Card } from "@/components/ui/card"
 
-interface FamilyMemberFormProps {
-  memberIndex: number
-  onSubmit: (data: FamilyMember) => Promise<void>
-  isFirst: boolean
-}
 
 export function FamilyMembersManager() {
   const router = useRouter()
@@ -25,6 +20,8 @@ export function FamilyMembersManager() {
   const { 
     entryId, 
     familyMembers, 
+    coordinator,
+    researcher,
     addFamilyMember, 
     beneficiary 
   } = useEntryStore()
@@ -49,8 +46,8 @@ export function FamilyMembersManager() {
         // First submit beneficiary data
         const formData = new FormData()
         formData.append('entryId', entryId)
-        formData.append('researcher', beneficiary.researcher)
-        formData.append('coordinator', beneficiary.coordinator)
+        formData.append('researcher', researcher?.name || "")
+        formData.append('coordinator', coordinator?.name || "")
         formData.append('beneficiaryName', beneficiary.name)
         formData.append('nationalId', beneficiary.nationalId)
         formData.append('gender', beneficiary.gender)
