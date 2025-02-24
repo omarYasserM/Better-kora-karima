@@ -32,15 +32,33 @@ export async function POST(req: Request) {
     ]
 
     if (!sheet) {
+      // Create new sheet with enough columns
       sheet = await doc.addSheet({ 
         title: "family-members",
-        headerValues: headers
+        headerValues: headers,
+        gridProperties: {
+          columnCount: headers.length,
+          rowCount: 1000 // Start with 1000 rows
+        }
       })
+      // Wait for the sheet to be fully initialized
+      await sheet.loadHeaderRow()
     } else {
-      // Ensure headers match current form config
-      const existingHeaders = sheet.headerValues
+      // Load headers first
+      await sheet.loadHeaderRow()
+      // Resize if needed
+      if (sheet.columnCount < headers.length) {
+        await sheet.resize({
+          rowCount: Math.max(sheet.rowCount, 1000),
+          columnCount: headers.length
+        })
+      }
+      // Then check and update headers if needed
+      const existingHeaders = sheet.headerValues || []
       if (JSON.stringify(existingHeaders) !== JSON.stringify(headers)) {
         await sheet.setHeaderRow(headers)
+        // Reload headers after setting them
+        await sheet.loadHeaderRow()
       }
     }
 
